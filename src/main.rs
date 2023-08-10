@@ -7,7 +7,7 @@ use rusqlite::params;
 use walkdir::WalkDir;
 
 use crate::{
-    args::Args,
+    args::{Args, Config},
     repository::{GitRepository, Uninitialized},
 };
 
@@ -16,23 +16,44 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let Args { root, database } = Args::parse();
+    let Args {
+        root,
+        recursive,
+        database,
+        config,
+    } = Args::parse();
+
+    let config = if config.exists() && config.is_file() {
+        serde_json::from_str::<Config>(&std::fs::read_to_string(&config)?)?
+    } else {
+        Config::default()
+    };
+
+    let dirs = if recursive {
+        WalkDir::new(&root)
+            .into_iter()
+            .skip(1) // skip root directory
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_dir())
+            .filter(|e| e.file_name().to_string_lossy() != ".git")
+            .filter(|e| {
+                if let Some(ignored_repositories) = &config.ignored_repositories {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    !ignored_repositories.contains(&name)
+                } else {
+                    true
+                }
+            })
+            .map(|e| e.path().to_owned())
+            .collect::<Vec<_>>()
+    } else {
+        vec![root.into()]
+    };
+
+    let (sender, receiver) = mpsc::channel();
     let manager = SqliteConnectionManager::file(&database);
     let pool = Pool::new(manager)?;
     prepare_database_connection(&pool)?;
-
-    let dirs = WalkDir::new(&root)
-        .min_depth(1)
-        .max_depth(1)
-        .into_iter()
-        .skip(1) // skip root directory
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_dir())
-        .filter(|e| e.file_name() != "router-backup")
-        .map(|e| e.path().to_owned())
-        .collect::<Vec<_>>();
-
-    let (sender, receiver) = mpsc::channel();
 
     for path in dirs {
         let pool = pool.clone();
