@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let Args {
         root,
         recursive,
+        max_depth,
         database,
         config,
     } = Args::parse();
@@ -31,6 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let dirs = if recursive {
         WalkDir::new(&root)
+            .max_depth(max_depth)
             .into_iter()
             .skip(1) // skip root directory
             .filter_map(|e| e.ok())

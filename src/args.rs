@@ -14,6 +14,10 @@ pub struct Args {
     #[clap(short, long)]
     pub recursive: bool,
 
+    /// Max depth of the recursive scan
+    #[clap(short, long, default_value = "1")]
+    pub max_depth: usize,
+
     /// Path to the database
     #[clap(short, long, default_value = "repositories.db")]
     pub database: Utf8PathBuf,
