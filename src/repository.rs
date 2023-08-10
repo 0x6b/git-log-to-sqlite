@@ -25,7 +25,8 @@ pub struct GitRepository<S> {
 }
 
 impl GitRepository<Uninitialized> {
-    pub fn try_new(path: &Utf8PathBuf) -> Result<Self, Box<dyn Error>> {
+    pub fn try_new(path: PathBuf) -> Result<Self, Box<dyn Error>> {
+        let path = Utf8PathBuf::from_path_buf(path).unwrap();
         if path.is_file() {
             return Err("Specified path is not a directory".into());
         }
@@ -47,6 +48,10 @@ impl GitRepository<Uninitialized> {
         Ok(Self {
             state: Uninitialized { path, name },
         })
+    }
+
+    pub fn open(self) -> Result<GitRepository<Opened>, Box<dyn Error>> {
+        self.try_into()
     }
 }
 
@@ -70,6 +75,10 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 }
 
 impl GitRepository<Opened> {
+    pub fn name(&self) -> &str {
+        &self.state.name
+    }
+
     pub fn analyze(&self) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
         let mut revwalk = self.state.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;

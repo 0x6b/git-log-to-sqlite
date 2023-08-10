@@ -39,43 +39,44 @@ fn main() -> Result<(), Box<dyn Error>> {
         let sender = sender.clone();
 
         thread::spawn(move || {
-            sender.send(format!("Processing {}", &path)).unwrap();
-            let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)
-                .unwrap()
-                .try_into()
-                .unwrap();
-            let repo = repo.analyze().unwrap();
+            sender.send(format!("Processing {}", &path.display())).unwrap();
+            GitRepository::<Uninitialized>::try_new(path)
+                .and_then(|uninitialized| uninitialized.open())
+                .and_then(|opened| {
+                    sender.send(format!("Analyzing {}", opened.name())).unwrap();
+                    opened.analyze()
+                })
+                .and_then(|repo| {
+                    sender.send(format!("Finished analyzing {}", repo.name()))?;
+                    let mut conn = pool.get()?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO repositories (name, url) VALUES (?1, ?2)",
+                        params![repo.name(), repo.url()],
+                    )?;
 
-            sender.send(format!("Processed {}", &repo.name())).unwrap();
-
-            let mut conn = pool.get().unwrap();
-            conn.execute(
-                "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
-                params![repo.name()],
-            )
-            .unwrap();
-
-            let tx = conn.transaction().unwrap();
-            sender.send("Storing logs into SQLite database".to_string()).unwrap();
-            for log in repo.logs() {
-                tx.execute(
-                    r#"
+                    let tx = conn.transaction()?;
+                    sender.send(format!("Storing {} logs into SQLite database from {}", repo.logs().len(), repo.name()))?;
+                    for log in repo.logs() {
+                        tx.execute(
+                            r#"
 INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
 "#,
-                    params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repo.name()],
-                ).unwrap();
+                            params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repo.name()],
+                        )?;
 
-                for path in &log.changed_files {
-                    tx.execute(
-                        "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
-                        params![log.commit_hash, path],
-                    )
-                    .unwrap();
-                }
-            }
+                        for path in &log.changed_files {
+                            tx.execute(
+                                "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                                params![log.commit_hash, path],
+                            )
+                                ?;
+                        }
+                    }
 
-            tx.commit().unwrap();
+                    tx.commit()?;
+                    Ok(())
+                }).ok();
         });
     }
 
