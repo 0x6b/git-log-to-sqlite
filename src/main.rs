@@ -14,36 +14,39 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let Args { path, database } = Args::parse();
+    let Args { paths, database } = Args::parse();
 
-    let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)?.try_into()?;
-    let repo = repo.analyze()?;
+    for path in paths {
+        let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)?.try_into()?;
+        let repo = repo.analyze()?;
 
-    if let Ok(mut conn) = prepare_database_connection(&database) {
-        let tx = conn.transaction()?;
-        tx.execute(
-            "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
-            params![repo.name()],
-        )?;
-        let repository_id = tx.last_insert_rowid();
-
-        for log in repo.logs() {
+        if let Ok(mut conn) = prepare_database_connection(&database) {
+            let tx = conn.transaction()?;
             tx.execute(
-                "INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repository_id],
+                "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
+                params![repo.name()],
             )?;
+            let repository_id = tx.last_insert_rowid();
 
-            for path in &log.changed_files {
+            for log in repo.logs() {
                 tx.execute(
-                    "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
-                    params![log.commit_hash, path],
+                    "INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repository_id],
                 )?;
-            }
-        }
 
-        tx.commit()?;
-        conn.close().unwrap();
+                for path in &log.changed_files {
+                    tx.execute(
+                        "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                        params![log.commit_hash, path],
+                    )?;
+                }
+            }
+
+            tx.commit()?;
+            conn.close().unwrap();
+        }
     }
+
     Ok(())
 }
 
