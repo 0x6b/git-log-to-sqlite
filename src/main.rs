@@ -55,28 +55,52 @@ fn main() -> Result<(), Box<dyn Error>> {
                     )?;
 
                     let tx = conn.transaction()?;
-                    sender.send(format!("Storing {} logs into SQLite database from {}", repo.logs().len(), repo.name()))?;
+                    sender.send(format!(
+                        "Storing {} logs into SQLite database from {}",
+                        repo.logs().len(),
+                        repo.name()
+                    ))?;
                     for log in repo.logs() {
                         tx.execute(
                             r#"
-INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
-"#,
-                            params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repo.name()],
+                                    INSERT INTO logs (
+                                        commit_hash,
+                                        parent_hash,
+                                        author_name,
+                                        author_email,
+                                        commit_datetime,
+                                        message,
+                                        insertions,
+                                        deletions,
+                                        repository_id
+                                    )
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
+                                    "#,
+                            params![
+                                log.commit_hash,
+                                log.parent_hash,
+                                log.author_name,
+                                log.author_email,
+                                log.commit_datetime,
+                                log.message,
+                                log.insertions as i64,
+                                log.deletions as i64,
+                                repo.name()
+                            ],
                         )?;
 
                         for path in &log.changed_files {
                             tx.execute(
                                 "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
                                 params![log.commit_hash, path],
-                            )
-                                ?;
+                            )?;
                         }
                     }
 
                     tx.commit()?;
                     Ok(())
-                }).ok();
+                })
+                .ok();
         });
     }
 
