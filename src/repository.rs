@@ -1,10 +1,13 @@
-use crate::log::GitLog;
+use std::{error::Error, path::PathBuf};
+
 use camino::Utf8PathBuf;
 use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
-use std::{error::Error, path::PathBuf};
+
+use crate::log::GitLog;
 
 pub struct Uninitialized {
     path: PathBuf,
+    name: String,
 }
 pub struct Opened {
     repo: Repository,
@@ -16,12 +19,28 @@ pub struct GitRepository<S> {
 }
 
 impl GitRepository<Uninitialized> {
-    pub fn new(path: &Utf8PathBuf) -> Self {
-        Self {
-            state: Uninitialized {
-                path: path.canonicalize().unwrap(),
-            },
+    pub fn try_new(path: &Utf8PathBuf) -> Result<Self, Box<dyn Error>> {
+        if path.is_file() {
+            return Err("Specified path is not a directory".into());
         }
+
+        let name = match path.file_name() {
+            Some(name) => name.to_string(),
+            None => {
+                return Err("Specified path is invalid".into());
+            }
+        };
+
+        let path = match path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                return Err("Specified path does not exist".into());
+            }
+        };
+
+        Ok(Self {
+            state: Uninitialized { path, name },
+        })
     }
 }
 
