@@ -12,6 +12,7 @@ pub struct Uninitialized {
 pub struct Opened {
     repo: Repository,
     head: Oid,
+    name: String,
 }
 
 pub struct GitRepository<S> {
@@ -54,7 +55,11 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
             .target()
             .ok_or(git2::Error::from_str("failed to get OID to HEAD"))?;
         Ok(Self {
-            state: Opened { repo, head },
+            state: Opened {
+                repo,
+                name: r.state.name,
+                head,
+            },
         })
     }
 }
