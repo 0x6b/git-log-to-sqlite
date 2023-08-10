@@ -1,0 +1,19 @@
+[package]
+name = "git-to-sqlite"
+version = "0.1.0"
+edition = "2021"
+description = "A tool to convert git repository logs to sqlite database"
+
+[[bin]]
+name = "g2s"
+path = "src/main.rs"
+
+[dependencies]
+# for easier path handling
+camino = { version = "1.1.6", features = ["serde"] }
+
+# for parsing command line arguments
+clap = { version = "4.3.21", features = ["derive"] }
+
+# for working with git repository
+git2 = "0.17.2"
