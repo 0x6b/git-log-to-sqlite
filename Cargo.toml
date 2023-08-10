@@ -2,7 +2,7 @@
 name = "git-to-sqlite"
 version = "0.1.0"
 edition = "2021"
-description = "A tool to convert git repository logs to sqlite database"
+description = "A tool to convert git repository logs (without merge commit) to sqlite database"
 
 [[bin]]
 name = "g2s"
