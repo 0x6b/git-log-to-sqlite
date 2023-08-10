@@ -17,6 +17,7 @@ pub struct Opened {
 
 pub struct Analyzed {
     name: String,
+    url: String,
     logs: Vec<GitLog>,
 }
 
@@ -151,9 +152,18 @@ impl GitRepository<Opened> {
             })
             .collect::<Vec<_>>();
 
+        let url = self
+            .state
+            .repo
+            .find_remote("origin")
+            .ok()
+            .and_then(|remote| remote.url().map(|url| url.to_string()).or(None))
+            .unwrap_or("(no remote url)".to_string());
+
         Ok(GitRepository {
             state: Analyzed {
                 name: self.state.name.clone(),
+                url,
                 logs,
             },
         })
@@ -163,6 +173,10 @@ impl GitRepository<Opened> {
 impl GitRepository<Analyzed> {
     pub fn name(&self) -> &str {
         &self.state.name
+    }
+
+    pub fn url(&self) -> &str {
+        &self.state.url
     }
 
     pub fn logs(&self) -> &Vec<GitLog> {

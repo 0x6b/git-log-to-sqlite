@@ -96,7 +96,8 @@ fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(
         r#"
         CREATE TABLE IF NOT EXISTS repositories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
+            name TEXT NOT NULL,
+            url TEXT
         )
         "#,
         [],
@@ -106,7 +107,6 @@ fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(
         r#"
         CREATE TABLE IF NOT EXISTS logs (
             commit_hash TEXT PRIMARY KEY,
-            parent_hash TEXT,
             author_name TEXT NOT NULL,
             author_email TEXT NOT NULL,
             message TEXT,
@@ -114,6 +114,7 @@ fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(
             insertions INTEGER,
             deletions INTEGER,
             repository_id INTEGER,
+            parent_hash TEXT,
             FOREIGN KEY (repository_id) REFERENCES repositories (id)
         )
         "#,
