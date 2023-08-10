@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-use crate::file::ChangedFiles;
-
 #[derive(Debug)]
 pub struct GitLog {
     pub commit_hash: String,
@@ -12,7 +10,7 @@ pub struct GitLog {
     pub message: String,
     pub insertions: usize,
     pub deletions: usize,
-    pub changed_files: ChangedFiles,
+    pub changed_files: Vec<String>,
 }
 
 impl Display for GitLog {
@@ -28,7 +26,7 @@ impl Display for GitLog {
             self.commit_datetime,
             self.insertions,
             self.deletions,
-            self.changed_files
+            self.changed_files.join(", ")
         )
     }
 }

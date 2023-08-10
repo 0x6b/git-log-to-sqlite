@@ -7,7 +7,6 @@ use crate::{
 use clap::Parser;
 
 mod args;
-mod file;
 mod log;
 mod repository;
 

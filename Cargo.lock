@@ -160,7 +160,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-sqlite"
+name = "git-to-sqlite"
 version = "0.1.0"
 dependencies = [
  "camino",

@@ -1,4 +1,4 @@
-use crate::{file::ChangedFile, log::GitLog};
+use crate::log::GitLog;
 use camino::Utf8PathBuf;
 use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
 use std::{error::Error, path::PathBuf};
@@ -91,25 +91,36 @@ impl GitRepository<Opened> {
                         .map(|_| {
                             let changed_files = diff
                                 .deltas()
-                                .map(|delta| ChangedFile::new(commit.id(), delta.new_file()))
+                                .map(|delta| delta.new_file().path().unwrap().display().to_string())
                                 .collect::<Vec<_>>();
 
                             let (insertions, deletions) = diff
                                 .stats()
                                 .map_or((0, 0), |stats| (stats.insertions(), stats.deletions()));
 
-                            (insertions, deletions, changed_files.into())
+                            (insertions, deletions, changed_files)
                         })
                     })
-                    .unwrap_or((0, 0, vec![].into()));
+                    .unwrap_or((0, 0, vec![]));
 
                 GitLog {
                     commit_hash: commit.id().to_string(),
                     parent_hash: parent_oid.unwrap_or(Oid::zero()).to_string(),
-                    author_name: commit.author().name().unwrap_or_default().to_string(),
-                    author_email: commit.author().email().unwrap_or_default().to_string(),
+                    author_name: commit
+                        .author()
+                        .name()
+                        .unwrap_or("(no author name)")
+                        .to_string(),
+                    author_email: commit
+                        .author()
+                        .email()
+                        .unwrap_or("(no author email)")
+                        .to_string(),
                     commit_datetime: commit.time().seconds(),
-                    message: commit.summary().unwrap_or_default().to_string(),
+                    message: commit
+                        .summary()
+                        .unwrap_or("(no commit summary)")
+                        .to_string(),
                     insertions,
                     deletions,
                     changed_files,
