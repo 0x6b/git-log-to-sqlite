@@ -1,5 +1,4 @@
-use std::error::Error;
-use std::thread;
+use std::{error::Error, sync::mpsc, thread};
 
 use clap::Parser;
 use r2d2::Pool;
@@ -21,45 +20,59 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pool = Pool::new(manager)?;
     prepare_database_connection(&pool)?;
 
-    let _ = paths
-        .into_iter()
-        .map(|path| {
-            let pool = pool.clone();
-            thread::spawn(move || {
-                let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
-                let repo = repo.analyze().unwrap();
-                let mut tx = pool.get().unwrap();
-                let tx = tx.transaction().unwrap();
+    let (sender, receiver) = mpsc::channel();
+
+    for path in paths {
+        let pool = pool.clone();
+        let sender = sender.clone();
+
+        thread::spawn(move || {
+            sender.send(format!("Processing {}", &path)).unwrap();
+            let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let repo = repo.analyze().unwrap();
+
+            sender.send(format!("Processed {}", &repo.name())).unwrap();
+
+            let mut conn = pool.get().unwrap();
+            conn.execute(
+                "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
+                params![repo.name()],
+            )
+            .unwrap();
+
+            let tx = conn.transaction().unwrap();
+            sender.send("Storing logs into SQLite database".to_string()).unwrap();
+            for log in repo.logs() {
                 tx.execute(
-                    "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
-                    params![repo.name()],
+                    r#"
+INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
+"#,
+                    params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repo.name()],
                 ).unwrap();
-                let repository_id = tx.last_insert_rowid();
 
-                for log in repo.logs() {
+                for path in &log.changed_files {
                     tx.execute(
-                        "INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                        params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repository_id],
-                    ).unwrap();
-
-                    for path in &log.changed_files {
-                        tx.execute(
-                            "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
-                            params![log.commit_hash, path],
-                        ).unwrap();
-                    }
+                        "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                        params![log.commit_hash, path],
+                    )
+                    .unwrap();
                 }
+            }
 
-                tx.commit().unwrap();
-            })
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(thread::JoinHandle::join)
-        .collect::<Vec<_>>();
+            tx.commit().unwrap();
+        });
+    }
+
+    drop(sender);
+
+    for received in receiver {
+        println!("{received}");
+    }
+
     Ok(())
 }
 
