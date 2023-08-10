@@ -158,7 +158,8 @@ impl GitRepository<Opened> {
             .find_remote("origin")
             .ok()
             .and_then(|remote| remote.url().map(|url| url.to_string()).or(None))
-            .unwrap_or("(no remote url)".to_string());
+            .unwrap_or("(no remote url)".to_string())
+            .replace("git@github.com:", "https://github.com/");
 
         Ok(GitRepository {
             state: Analyzed {
