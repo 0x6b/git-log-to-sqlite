@@ -1,8 +1,8 @@
-use camino::Utf8PathBuf;
-use std::error::Error;
-
 use clap::Parser;
-use rusqlite::{params, Connection};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
+use std::error::Error;
 
 use crate::{
     args::Args,
@@ -15,43 +15,44 @@ mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let Args { paths, database } = Args::parse();
+    let manager = SqliteConnectionManager::file(&database);
+    let pool = Pool::new(manager)?;
+    prepare_database_connection(&pool)?;
 
     for path in paths {
         let repo: GitRepository<Opened> = GitRepository::<Uninitialized>::try_new(&path)?.try_into()?;
         let repo = repo.analyze()?;
 
-        if let Ok(mut conn) = prepare_database_connection(&database) {
-            let tx = conn.transaction()?;
+        let mut tx = pool.get().unwrap();
+        let tx = tx.transaction()?;
+        tx.execute(
+            "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
+            params![repo.name()],
+        )?;
+        let repository_id = tx.last_insert_rowid();
+
+        for log in repo.logs() {
             tx.execute(
-                "INSERT OR IGNORE INTO repositories (name) VALUES (?1)",
-                params![repo.name()],
+                "INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repository_id],
             )?;
-            let repository_id = tx.last_insert_rowid();
 
-            for log in repo.logs() {
+            for path in &log.changed_files {
                 tx.execute(
-                    "INSERT INTO logs (commit_hash, parent_hash, author_name, author_email, commit_datetime, message, insertions, deletions, repository_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    params![log.commit_hash, log.parent_hash, log.author_name, log.author_email, log.commit_datetime, log.message, log.insertions as i64, log.deletions as i64, repository_id],
+                    "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                    params![log.commit_hash, path],
                 )?;
-
-                for path in &log.changed_files {
-                    tx.execute(
-                        "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
-                        params![log.commit_hash, path],
-                    )?;
-                }
             }
-
-            tx.commit()?;
-            conn.close().unwrap();
         }
+
+        tx.commit()?;
     }
 
     Ok(())
 }
 
-fn prepare_database_connection(path: &Utf8PathBuf) -> Result<Connection, Box<dyn Error>> {
-    let conn = Connection::open(path)?;
+fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(), Box<dyn Error>> {
+    let conn = pool.get()?;
 
     conn.execute(
         r#"
@@ -93,5 +94,5 @@ fn prepare_database_connection(path: &Utf8PathBuf) -> Result<Connection, Box<dyn
         [],
     )?;
 
-    Ok(conn)
+    Ok(())
 }
