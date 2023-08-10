@@ -22,3 +22,6 @@ r2d2_sqlite = "0.22.0"
 
 # for working with sqlite database
 rusqlite = "0.29.0"
+
+# to traverse directory
+walkdir = "2.3.3"

@@ -4,6 +4,7 @@ use clap::Parser;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
+use walkdir::WalkDir;
 
 use crate::{
     args::Args,
@@ -15,14 +16,25 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let Args { paths, database } = Args::parse();
+    let Args { root, database } = Args::parse();
     let manager = SqliteConnectionManager::file(&database);
     let pool = Pool::new(manager)?;
     prepare_database_connection(&pool)?;
 
+    let dirs = WalkDir::new(&root)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .skip(1) // skip root directory
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir())
+        .filter(|e| e.file_name() != "router-backup")
+        .map(|e| e.path().to_owned())
+        .collect::<Vec<_>>();
+
     let (sender, receiver) = mpsc::channel();
 
-    for path in paths {
+    for path in dirs {
         let pool = pool.clone();
         let sender = sender.clone();
 

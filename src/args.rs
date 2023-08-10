@@ -4,9 +4,9 @@ use clap::Parser;
 #[derive(Parser)]
 #[clap(about, version)]
 pub struct Args {
-    /// Path to the git repository
+    /// Path to root of the git repositories
     #[clap()]
-    pub paths: Vec<Utf8PathBuf>,
+    pub root: Utf8PathBuf,
 
     /// Path to the database
     #[clap(short, long, default_value = "repositories.db")]
