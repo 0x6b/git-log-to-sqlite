@@ -48,12 +48,11 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
     type Error = git2::Error;
 
     fn try_from(r: GitRepository<Uninitialized>) -> Result<Self, Self::Error> {
-        let repo = Repository::open(r.state.path).expect("failed to open repository");
+        let repo = Repository::open(r.state.path)?;
         let head = repo
-            .head()
-            .expect("failed to get HEAD")
+            .head()?
             .target()
-            .expect("failed to get OID to HEAD");
+            .ok_or(git2::Error::from_str("failed to get OID to HEAD"))?;
         Ok(Self {
             state: Opened { repo, head },
         })
