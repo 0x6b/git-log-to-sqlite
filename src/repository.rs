@@ -6,13 +6,18 @@ use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
 use crate::log::GitLog;
 
 pub struct Uninitialized {
-    path: PathBuf,
     name: String,
+    path: PathBuf,
 }
 pub struct Opened {
+    name: String,
     repo: Repository,
     head: Oid,
+}
+
+pub struct Analyzed {
     name: String,
+    logs: Vec<GitLog>,
 }
 
 pub struct GitRepository<S> {
@@ -65,7 +70,7 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 }
 
 impl GitRepository<Opened> {
-    pub fn get_logs(&self) -> Result<Vec<GitLog>, Box<dyn Error>> {
+    pub fn analyze(&self) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
         let mut revwalk = self.state.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;
         revwalk.push(self.state.head)?;
@@ -106,10 +111,7 @@ impl GitRepository<Opened> {
                     )
                     .and_then(|mut diff| {
                         diff.find_similar(Some(
-                            &mut DiffFindOptions::new()
-                                .renames(true)
-                                .copies(true)
-                                .exact_match_only(true),
+                            &mut DiffFindOptions::new().renames(true).copies(true).exact_match_only(true),
                         ))
                         .map(|_| {
                             let changed_files = diff
@@ -129,21 +131,10 @@ impl GitRepository<Opened> {
                 GitLog {
                     commit_hash: commit.id().to_string(),
                     parent_hash: parent_oid.unwrap_or(Oid::zero()).to_string(),
-                    author_name: commit
-                        .author()
-                        .name()
-                        .unwrap_or("(no author name)")
-                        .to_string(),
-                    author_email: commit
-                        .author()
-                        .email()
-                        .unwrap_or("(no author email)")
-                        .to_string(),
+                    author_name: commit.author().name().unwrap_or("(no author name)").to_string(),
+                    author_email: commit.author().email().unwrap_or("(no author email)").to_string(),
                     commit_datetime: commit.time().seconds(),
-                    message: commit
-                        .summary()
-                        .unwrap_or("(no commit summary)")
-                        .to_string(),
+                    message: commit.summary().unwrap_or("(no commit summary)").to_string(),
                     insertions,
                     deletions,
                     changed_files,
@@ -151,6 +142,21 @@ impl GitRepository<Opened> {
             })
             .collect::<Vec<_>>();
 
-        Ok(logs)
+        Ok(GitRepository {
+            state: Analyzed {
+                name: self.state.name.clone(),
+                logs,
+            },
+        })
+    }
+}
+
+impl GitRepository<Analyzed> {
+    pub fn name(&self) -> &str {
+        &self.state.name
+    }
+
+    pub fn logs(&self) -> &Vec<GitLog> {
+        &self.state.logs
     }
 }

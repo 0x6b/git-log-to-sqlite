@@ -7,4 +7,8 @@ pub struct Args {
     /// Path to the git repository
     #[clap()]
     pub path: Utf8PathBuf,
+
+    /// Path to the database
+    #[clap(short, long, default_value = "repositories.db")]
+    pub database: Utf8PathBuf,
 }

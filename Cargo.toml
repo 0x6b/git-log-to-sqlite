@@ -17,3 +17,4 @@ clap = { version = "4.3.21", features = ["derive"] }
 
 # for working with git repository
 git2 = "0.17.2"
+rusqlite = "0.29.0"
