@@ -57,7 +57,7 @@ impl GitRepository<Uninitialized> {
 }
 
 impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
-    type Error = git2::Error;
+    type Error = Box<dyn Error>;
 
     fn try_from(r: GitRepository<Uninitialized>) -> Result<Self, Self::Error> {
         let repo = Repository::open(r.state.path)?;
