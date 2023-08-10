@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 
 use crate::{
     args::Args,
-    repository::{GitRepository, Opened, Uninitialized},
+    repository::{GitRepository, Uninitialized},
 };
 
 mod args;
