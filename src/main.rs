@@ -1,5 +1,6 @@
 use std::{error::Error, path::PathBuf};
 
+use camino::Utf8PathBuf;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressStyle};
 use r2d2::Pool;
@@ -29,39 +30,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
-    let mut ignored = Vec::new();
 
-    let config = if config.exists() && config.is_file() {
-        serde_json::from_str::<Config>(&std::fs::read_to_string(&config).unwrap()).unwrap()
-    } else {
-        Config::default()
-    };
-
-    let dirs = if recursive {
-        WalkDir::new(&root)
-            .max_depth(max_depth)
-            .into_iter()
-            .skip(1) // skip root directory
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_dir())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                if name == ".git" {
-                    return false;
-                }
-                if let Some(ignored_repositories) = &config.ignored_repositories {
-                    if ignored_repositories.contains(&name) {
-                        ignored.push(name);
-                        return false;
-                    }
-                }
-                true
-            })
-            .map(|e| e.path().to_owned())
-            .collect::<Vec<_>>()
-    } else {
-        vec![root.into()]
-    };
+    let (dirs, ignored_repositories) = get_directories_to_scan(&root, recursive, max_depth, &config);
 
     let manager = SqliteConnectionManager::file(&database);
     let pool = Pool::new(manager).unwrap();
@@ -90,7 +60,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("# {} repositories in the table", names.len());
-    println!("# {} ignored repositories:\n{}", ignored.len(), ignored.join("\n"));
+    println!(
+        "# {} ignored repositories:\n{}",
+        ignored_repositories.len(),
+        ignored_repositories.join("\n")
+    );
 
     let not_stored_dirs = dirs
         .iter()
@@ -186,6 +160,48 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             Ok(())
         })
         .ok();
+}
+
+fn get_directories_to_scan(
+    root: &Utf8PathBuf,
+    recursive: bool,
+    max_depth: usize,
+    config: &Utf8PathBuf,
+) -> (Vec<PathBuf>, Vec<String>) {
+    let mut ignored = Vec::new();
+    let config = if config.exists() && config.is_file() {
+        serde_json::from_str::<Config>(&std::fs::read_to_string(&config).unwrap()).unwrap()
+    } else {
+        Config::default()
+    };
+
+    let dirs = if recursive {
+        WalkDir::new(root)
+            .max_depth(max_depth)
+            .into_iter()
+            .skip(1) // skip root directory
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_dir())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name == ".git" {
+                    return false;
+                }
+                if let Some(ignored_repositories) = &config.ignored_repositories {
+                    if ignored_repositories.contains(&name) {
+                        ignored.push(name);
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|e| e.path().to_owned())
+            .collect::<Vec<_>>()
+    } else {
+        vec![root.into()]
+    };
+
+    (dirs, ignored)
 }
 
 fn prepare_database(pool: &Pool<SqliteConnectionManager>, clear: bool) -> Result<(), Box<dyn Error>> {
