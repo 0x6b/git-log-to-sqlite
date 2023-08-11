@@ -1,6 +1,5 @@
 use std::{error::Error, path::PathBuf};
 
-use camino::Utf8PathBuf;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressStyle};
 use r2d2::Pool;
