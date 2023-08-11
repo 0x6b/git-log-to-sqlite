@@ -140,19 +140,19 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             for log in repo.logs() {
                 tx.execute(
                     r#"
-                                    INSERT INTO logs (
-                                        commit_hash,
-                                        parent_hash,
-                                        author_name,
-                                        author_email,
-                                        commit_datetime,
-                                        message,
-                                        insertions,
-                                        deletions,
-                                        repository_id
-                                    )
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
-                                    "#,
+                        INSERT INTO logs (
+                            commit_hash,
+                            parent_hash,
+                            author_name,
+                            author_email,
+                            commit_datetime,
+                            message,
+                            insertions,
+                            deletions,
+                            repository_id
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
+                        "#,
                     params![
                         log.commit_hash,
                         log.parent_hash,
