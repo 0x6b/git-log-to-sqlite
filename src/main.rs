@@ -16,8 +16,7 @@ mod args;
 mod log;
 mod repository;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let Args {
         root,
         recursive,
@@ -25,18 +24,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         database,
         config,
         clear,
+        num_threads,
     } = Args::parse();
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
+    let mut ignored = Vec::new();
 
     let config = if config.exists() && config.is_file() {
-        serde_json::from_str::<Config>(&std::fs::read_to_string(&config)?)?
+        serde_json::from_str::<Config>(&std::fs::read_to_string(&config).unwrap()).unwrap()
     } else {
         Config::default()
     };
-
-    let mut ignored = Vec::new();
 
     let dirs = if recursive {
         WalkDir::new(&root)
@@ -65,23 +64,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let manager = SqliteConnectionManager::file(&database);
-    let pool = Pool::new(manager)?;
-    prepare_database(&pool, clear)?;
+    let pool = Pool::new(manager).unwrap();
+    prepare_database(&pool, clear).unwrap();
 
-    for path in &dirs {
-        tasks.push(tokio::spawn(exec(path.clone(), pool.clone(), m.clone())));
-    }
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_threads)
+        .build()
+        .unwrap()
+        .block_on(async {
+            for path in &dirs {
+                tasks.push(tokio::spawn(exec(path.clone(), pool.clone(), m.clone())));
+            }
 
-    for task in tasks {
-        task.await?;
-    }
+            for task in tasks {
+                task.await.unwrap();
+            }
+        });
 
-    let conn = pool.get()?;
+    let conn = pool.get().unwrap();
     let mut names = Vec::new();
-    let mut stmt = conn.prepare("SELECT name FROM repositories")?;
-    let mut rows = stmt.query(params![])?;
-    while let Some(row) = rows.next()? {
-        names.push(row.get::<_, String>(0)?);
+    let mut stmt = conn.prepare("SELECT name FROM repositories").unwrap();
+    let mut rows = stmt.query(params![]).unwrap();
+    while let Some(row) = rows.next().unwrap() {
+        names.push(row.get::<_, String>(0).unwrap());
     }
 
     println!("# {} repositories in the table", names.len());
@@ -101,7 +106,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             not_stored_dirs.join("\n")
         );
     }
-
     Ok(())
 }
 

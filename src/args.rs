@@ -29,6 +29,10 @@ pub struct Args {
     /// Delete all records from the database before scanning
     #[clap(short, long)]
     pub clear: bool,
+
+    /// Number of worker threads
+    #[clap(short, long, default_value = "8")]
+    pub num_threads: usize,
 }
 
 /// Configuration file
