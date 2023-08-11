@@ -1,7 +1,7 @@
 use std::{error::Error, path::PathBuf};
 
 use clap::Parser;
-use indicatif::{MultiProgress, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
@@ -25,19 +25,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     let pool = Pool::new(SqliteConnectionManager::file(args.database)).unwrap();
     prepare_database(&pool, args.clear).unwrap();
 
+    let overall_progress = m.add(ProgressBar::new(dirs.len() as u64));
+    overall_progress.set_style(
+        ProgressStyle::with_template("{prefix:<30!.blue} {bar:40} {pos:>3}/{len:3} [{elapsed_precise}]")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    overall_progress.set_prefix("OVERALL PROGRESS");
+
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(args.num_threads)
         .build()
         .unwrap()
         .block_on(async {
             for path in &dirs {
-                tasks.push(tokio::spawn(exec(path.clone(), pool.clone(), m.clone())));
+                tasks.push(tokio::spawn(exec(
+                    path.clone(),
+                    pool.clone(),
+                    m.clone(),
+                    overall_progress.clone(),
+                )));
             }
 
             for task in tasks {
                 task.await.unwrap();
             }
         });
+
+    println!(
+        "# Done in {} seconds",
+        overall_progress.elapsed().as_millis() as f64 / 1000.0
+    );
+    overall_progress.finish_and_clear();
 
     let conn = pool.get()?;
     let mut stmt = conn.prepare("SELECT name FROM repositories")?;
@@ -70,14 +89,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgress) {
+async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgress, overall_progress: ProgressBar) {
     let pb = m.add(indicatif::ProgressBar::new(1));
     pb.set_style(
         ProgressStyle::with_template("{prefix:<30!.blue} {bar:40.cyan/blue} {pos:>3}/{len:3} {msg}")
             .unwrap()
             .progress_chars("##-"),
     );
-    pb.set_prefix(path.file_name().unwrap().to_string_lossy().to_string());
+    pb.set_prefix(format!("- {}", path.file_name().unwrap().to_string_lossy()));
     pb.set_length(4); // opening, analyzing, storing (repo, logs), done
 
     GitRepository::<Uninitialized>::try_new(path)
@@ -144,6 +163,7 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             tx.commit()?;
             pb.set_message("done");
             pb.finish_and_clear();
+            overall_progress.inc(1);
             Ok(())
         })
         .ok();
