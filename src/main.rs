@@ -44,10 +44,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .skip(1) // skip root directory
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_dir())
-            .filter(|e| e.file_name().to_string_lossy() != ".git")
             .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name == ".git" {
+                    return false;
+                }
                 if let Some(ignored_repositories) = &config.ignored_repositories {
-                    let name = e.file_name().to_string_lossy().to_string();
                     if ignored_repositories.contains(&name) {
                         ignored.push(name);
                         return false;
