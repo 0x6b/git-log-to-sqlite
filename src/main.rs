@@ -35,6 +35,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Config::default()
     };
 
+    let mut ignored = Vec::new();
+
     let dirs = if recursive {
         WalkDir::new(&root)
             .max_depth(max_depth)
@@ -46,10 +48,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .filter(|e| {
                 if let Some(ignored_repositories) = &config.ignored_repositories {
                     let name = e.file_name().to_string_lossy().to_string();
-                    !ignored_repositories.contains(&name)
-                } else {
-                    true
+                    if ignored_repositories.contains(&name) {
+                        ignored.push(name);
+                        return false;
+                    }
                 }
+                true
             })
             .map(|e| e.path().to_owned())
             .collect::<Vec<_>>()
@@ -61,14 +65,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let pool = Pool::new(manager)?;
     prepare_database_connection(&pool)?;
 
-    for path in dirs {
-        let pool = pool.clone();
-
-        tasks.push(tokio::spawn(exec(path, pool, m.clone())));
+    for path in &dirs {
+        tasks.push(tokio::spawn(exec(path.clone(), pool.clone(), m.clone())));
     }
 
     for task in tasks {
         task.await?;
+    }
+
+    let conn = pool.get()?;
+    let mut names = Vec::new();
+    let mut stmt = conn.prepare("SELECT name FROM repositories")?;
+    let mut rows = stmt.query(params![])?;
+    while let Some(row) = rows.next()? {
+        names.push(row.get::<_, String>(0)?);
+    }
+
+    println!("# {} repositories in the table", names.len());
+    println!("# {} ignored repositories:\n{}", ignored.len(), ignored.join("\n"));
+
+    let not_stored_dirs = dirs
+        .iter()
+        .filter(|e| !names.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
+        .map(|e| e.display().to_string())
+        .collect::<Vec<_>>();
+    if not_stored_dirs.is_empty() {
+        println!("# All repositories were stored successfully");
+    } else {
+        println!(
+            "# {} directories were not stored for some reason. Maybe empty, or not a git repository?:\n{}",
+            not_stored_dirs.len(),
+            not_stored_dirs.join("\n")
+        );
     }
 
     Ok(())
@@ -137,7 +165,6 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
                 )?;
 
                 pb.set_message(format!("storing {} changed files", log.changed_files.len()));
-                pb.inc(1);
                 for path in &log.changed_files {
                     tx.execute(
                         "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
