@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         max_depth,
         database,
         config,
+        clear,
     } = Args::parse();
 
     let mut tasks = Vec::new();
@@ -65,7 +66,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let manager = SqliteConnectionManager::file(&database);
     let pool = Pool::new(manager)?;
-    prepare_database_connection(&pool)?;
+    prepare_database(&pool, clear)?;
 
     for path in &dirs {
         tasks.push(tokio::spawn(exec(path.clone(), pool.clone(), m.clone())));
@@ -183,7 +184,7 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
         .ok();
 }
 
-fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(), Box<dyn Error>> {
+fn prepare_database(pool: &Pool<SqliteConnectionManager>, clear: bool) -> Result<(), Box<dyn Error>> {
     let conn = pool.get()?;
 
     conn.execute(
@@ -226,6 +227,12 @@ fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(
         "#,
         [],
     )?;
+
+    if clear {
+        conn.execute("DELETE FROM repositories", [])?;
+        conn.execute("DELETE FROM logs", [])?;
+        conn.execute("DELETE FROM changed_files", [])?;
+    }
 
     Ok(())
 }

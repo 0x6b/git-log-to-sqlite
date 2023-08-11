@@ -23,8 +23,12 @@ pub struct Args {
     pub database: Utf8PathBuf,
 
     /// Path to JSON configuration file
-    #[clap(short, long, default_value = "config.json")]
+    #[clap(short = 'f', long, default_value = "config.json")]
     pub config: Utf8PathBuf,
+
+    /// Delete all records from the database before scanning
+    #[clap(short, long)]
+    pub clear: bool,
 }
 
 /// Configuration file
