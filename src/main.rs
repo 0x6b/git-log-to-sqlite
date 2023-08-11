@@ -18,27 +18,16 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let Args {
-        root,
-        recursive,
-        max_depth,
-        database,
-        config,
-        clear,
-        num_threads,
-    } = Args::parse();
+    let args = Args::parse();
+    let (dirs, ignored_repositories) = get_directories_to_scan(&args);
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
-
-    let (dirs, ignored_repositories) = get_directories_to_scan(&root, recursive, max_depth, &config);
-
-    let manager = SqliteConnectionManager::file(&database);
-    let pool = Pool::new(manager).unwrap();
-    prepare_database(&pool, clear).unwrap();
+    let pool = Pool::new(SqliteConnectionManager::file(args.database)).unwrap();
+    prepare_database(&pool, args.clear).unwrap();
 
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_threads)
+        .worker_threads(args.num_threads)
         .build()
         .unwrap()
         .block_on(async {
@@ -162,22 +151,25 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
         .ok();
 }
 
-fn get_directories_to_scan(
-    root: &Utf8PathBuf,
-    recursive: bool,
-    max_depth: usize,
-    config: &Utf8PathBuf,
-) -> (Vec<PathBuf>, Vec<String>) {
+fn get_directories_to_scan(args: &Args) -> (Vec<PathBuf>, Vec<String>) {
+    let Args {
+        root,
+        recursive,
+        max_depth,
+        config,
+        ..
+    } = args;
+
     let mut ignored = Vec::new();
     let config = if config.exists() && config.is_file() {
-        serde_json::from_str::<Config>(&std::fs::read_to_string(&config).unwrap()).unwrap()
+        serde_json::from_str::<Config>(&std::fs::read_to_string(config).unwrap()).unwrap()
     } else {
         Config::default()
     };
 
-    let dirs = if recursive {
+    let dirs = if *recursive {
         WalkDir::new(root)
-            .max_depth(max_depth)
+            .max_depth(*max_depth)
             .into_iter()
             .skip(1) // skip root directory
             .filter_map(|e| e.ok())
