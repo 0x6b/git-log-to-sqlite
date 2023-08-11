@@ -40,15 +40,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
-    let conn = pool.get().unwrap();
-    let mut names = Vec::new();
-    let mut stmt = conn.prepare("SELECT name FROM repositories").unwrap();
-    let mut rows = stmt.query(params![]).unwrap();
-    while let Some(row) = rows.next().unwrap() {
-        names.push(row.get::<_, String>(0).unwrap());
-    }
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare("SELECT name FROM repositories")?;
+    let repositories = stmt
+        .query_map(params![], |row| row.get::<_, String>(0))?
+        .filter_map(|name| name.ok())
+        .collect::<Vec<_>>();
 
-    println!("# {} repositories in the table", names.len());
+    println!("# {} repositories in the table", repositories.len());
     println!(
         "# {} ignored repositories:\n{}",
         ignored_repositories.len(),
@@ -57,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let not_stored_dirs = dirs
         .iter()
-        .filter(|e| !names.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
+        .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
         .map(|e| e.display().to_string())
         .collect::<Vec<_>>();
     if not_stored_dirs.is_empty() {
