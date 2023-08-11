@@ -17,6 +17,7 @@ clap = { version = "4.3.21", features = ["derive"] }
 
 # for working with git repository
 git2 = "0.17.2"
+indicatif = "0.17.6"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.22.0"
 
@@ -27,6 +28,7 @@ rusqlite = "0.29.0"
 serde = "1.0.183"
 serde_derive = "1.0.183"
 serde_json = "1.0.104"
+tokio = { version = "1.30.0", features = ["full"] }
 
 # to traverse directory
 walkdir = "2.3.3"

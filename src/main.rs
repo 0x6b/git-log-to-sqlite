@@ -1,6 +1,7 @@
-use std::{error::Error, sync::mpsc, thread};
+use std::{error::Error, path::PathBuf};
 
 use clap::Parser;
+use indicatif::{MultiProgress, ProgressStyle};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
@@ -15,7 +16,8 @@ mod args;
 mod log;
 mod repository;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
+async fn main() -> Result<(), Box<dyn Error>> {
     let Args {
         root,
         recursive,
@@ -23,6 +25,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         database,
         config,
     } = Args::parse();
+
+    let mut tasks = Vec::new();
+    let m = MultiProgress::new();
 
     let config = if config.exists() && config.is_file() {
         serde_json::from_str::<Config>(&std::fs::read_to_string(&config)?)?
@@ -52,40 +57,59 @@ fn main() -> Result<(), Box<dyn Error>> {
         vec![root.into()]
     };
 
-    let (sender, receiver) = mpsc::channel();
     let manager = SqliteConnectionManager::file(&database);
     let pool = Pool::new(manager)?;
     prepare_database_connection(&pool)?;
 
     for path in dirs {
         let pool = pool.clone();
-        let sender = sender.clone();
 
-        thread::spawn(move || {
-            sender.send(format!("Processing {}", &path.display())).unwrap();
-            GitRepository::<Uninitialized>::try_new(path)
-                .and_then(|uninitialized| uninitialized.open())
-                .and_then(|opened| {
-                    sender.send(format!("Analyzing {}", opened.name())).unwrap();
-                    opened.analyze()
-                })
-                .and_then(|repo| {
-                    sender.send(format!("Finished analyzing {}", repo.name()))?;
-                    let mut conn = pool.get()?;
-                    conn.execute(
-                        "INSERT OR IGNORE INTO repositories (name, url) VALUES (?1, ?2)",
-                        params![repo.name(), repo.url()],
-                    )?;
+        tasks.push(tokio::spawn(exec(path, pool, m.clone())));
+    }
 
-                    let tx = conn.transaction()?;
-                    sender.send(format!(
-                        "Storing {} logs into SQLite database from {}",
-                        repo.logs().len(),
-                        repo.name()
-                    ))?;
-                    for log in repo.logs() {
-                        tx.execute(
-                            r#"
+    for task in tasks {
+        task.await?;
+    }
+
+    Ok(())
+}
+
+async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgress) {
+    let pb = m.add(indicatif::ProgressBar::new(1));
+    pb.set_style(
+        ProgressStyle::with_template("{prefix:<30!.blue} {bar:40.cyan/blue} {pos:>3}/{len:3} {msg}")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    pb.set_prefix(path.file_name().unwrap().to_string_lossy().to_string());
+    pb.set_length(5); // opening, analyzing, storing (repo, logs, files), done
+
+    GitRepository::<Uninitialized>::try_new(path)
+        .and_then(|uninitialized| {
+            pb.set_message("opening");
+            pb.inc(1);
+            uninitialized.open()
+        })
+        .and_then(|opened| {
+            pb.set_message("analyzing");
+            pb.inc(1);
+            opened.analyze()
+        })
+        .and_then(|repo| {
+            pb.set_message("storing into repositories table");
+            pb.inc(1);
+            let mut conn = pool.get()?;
+            conn.execute(
+                "INSERT OR IGNORE INTO repositories (name, url) VALUES (?1, ?2)",
+                params![repo.name(), repo.url()],
+            )?;
+
+            let tx = conn.transaction()?;
+            pb.set_message(format!("storing {} logs", repo.logs().len()));
+            pb.inc(1);
+            for log in repo.logs() {
+                tx.execute(
+                    r#"
                                     INSERT INTO logs (
                                         commit_hash,
                                         parent_hash,
@@ -99,41 +123,35 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     )
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
                                     "#,
-                            params![
-                                log.commit_hash,
-                                log.parent_hash,
-                                log.author_name,
-                                log.author_email,
-                                log.commit_datetime,
-                                log.message,
-                                log.insertions as i64,
-                                log.deletions as i64,
-                                repo.name()
-                            ],
-                        )?;
+                    params![
+                        log.commit_hash,
+                        log.parent_hash,
+                        log.author_name,
+                        log.author_email,
+                        log.commit_datetime,
+                        log.message,
+                        log.insertions as i64,
+                        log.deletions as i64,
+                        repo.name()
+                    ],
+                )?;
 
-                        for path in &log.changed_files {
-                            tx.execute(
-                                "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
-                                params![log.commit_hash, path],
-                            )?;
-                        }
-                    }
+                pb.set_message(format!("storing {} changed files", log.changed_files.len()));
+                pb.inc(1);
+                for path in &log.changed_files {
+                    tx.execute(
+                        "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                        params![log.commit_hash, path],
+                    )?;
+                }
+            }
 
-                    tx.commit()?;
-                    Ok(())
-                })
-                .ok();
-        });
-    }
-
-    drop(sender);
-
-    for received in receiver {
-        println!("{received}");
-    }
-
-    Ok(())
+            tx.commit()?;
+            pb.set_message("done");
+            pb.finish_and_clear();
+            Ok(())
+        })
+        .ok();
 }
 
 fn prepare_database_connection(pool: &Pool<SqliteConnectionManager>) -> Result<(), Box<dyn Error>> {

@@ -86,10 +86,6 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 }
 
 impl GitRepository<Opened> {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn analyze(&self) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
         let mut revwalk = self.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;
