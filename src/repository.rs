@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::{error::Error, path::PathBuf};
 
 use camino::Utf8PathBuf;
@@ -9,6 +10,7 @@ pub struct Uninitialized {
     name: String,
     path: PathBuf,
 }
+
 pub struct Opened {
     name: String,
     repo: Repository,
@@ -23,6 +25,14 @@ pub struct Analyzed {
 
 pub struct GitRepository<S> {
     state: S,
+}
+
+impl<S> Deref for GitRepository<S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
 }
 
 impl GitRepository<Uninitialized> {
@@ -60,7 +70,7 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
     type Error = Box<dyn Error>;
 
     fn try_from(r: GitRepository<Uninitialized>) -> Result<Self, Self::Error> {
-        let repo = Repository::open(r.state.path)?;
+        let repo = Repository::open(&r.path)?;
         let head = repo
             .head()?
             .target()
@@ -68,7 +78,7 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
         Ok(Self {
             state: Opened {
                 repo,
-                name: r.state.name,
+                name: r.name.clone(),
                 head,
             },
         })
@@ -77,17 +87,17 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 
 impl GitRepository<Opened> {
     pub fn name(&self) -> &str {
-        &self.state.name
+        &self.name
     }
 
     pub fn analyze(&self) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
-        let mut revwalk = self.state.repo.revwalk()?;
+        let mut revwalk = self.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;
-        revwalk.push(self.state.head)?;
+        revwalk.push(self.head)?;
 
         let commits = revwalk
             .filter_map(|oid| oid.ok())
-            .map(|oid| self.state.repo.find_commit(oid))
+            .map(|oid| self.repo.find_commit(oid))
             .filter_map(|commit| commit.ok())
             .filter(|commit| commit.parent_count() < 2) // ignore merge commits
             .filter(|commit| commit.tree().is_ok())
@@ -103,11 +113,10 @@ impl GitRepository<Opened> {
                     .flatten(); // if commit has no parent (is a root), return None
 
                 let parent_tree = parent_oid
-                    .and_then(|oid| self.state.repo.find_commit(oid).ok())
+                    .and_then(|oid| self.repo.find_commit(oid).ok())
                     .and_then(|parent_commit| parent_commit.tree().ok());
 
                 let (insertions, deletions, changed_files) = self
-                    .state
                     .repo
                     .diff_tree_to_tree(
                         parent_tree.as_ref(),
@@ -153,7 +162,6 @@ impl GitRepository<Opened> {
             .collect::<Vec<_>>();
 
         let url = self
-            .state
             .repo
             .find_remote("origin")
             .ok()
@@ -163,7 +171,7 @@ impl GitRepository<Opened> {
 
         Ok(GitRepository {
             state: Analyzed {
-                name: self.state.name.clone(),
+                name: self.name.clone(),
                 url,
                 logs,
             },
@@ -173,14 +181,14 @@ impl GitRepository<Opened> {
 
 impl GitRepository<Analyzed> {
     pub fn name(&self) -> &str {
-        &self.state.name
+        &self.name
     }
 
     pub fn url(&self) -> &str {
-        &self.state.url
+        &self.url
     }
 
     pub fn logs(&self) -> &Vec<GitLog> {
-        &self.state.logs
+        &self.logs
     }
 }
