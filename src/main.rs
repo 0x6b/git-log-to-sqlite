@@ -110,7 +110,7 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             .progress_chars("##-"),
     );
     pb.set_prefix(path.file_name().unwrap().to_string_lossy().to_string());
-    pb.set_length(5); // opening, analyzing, storing (repo, logs, files), done
+    pb.set_length(4); // opening, analyzing, storing (repo, logs), done
 
     GitRepository::<Uninitialized>::try_new(path)
         .and_then(|uninitialized| {
