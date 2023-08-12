@@ -30,6 +30,19 @@ Options:
   -V, --version                    Print version
 ```
 
+### Configuration
+
+You can ignore some repositories by creating a JSON configuration file. By default, the tool will look for a file named `config.json` in the current directory.
+
+```json
+{
+  "ignored_repositories": [
+    "directory-name-of-repository-to-ignore",
+    "..."
+  ]
+}
+```
+
 ## Schema
 
 ```mermaid
