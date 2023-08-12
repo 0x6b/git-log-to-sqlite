@@ -27,9 +27,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let overall_progress = m.add(ProgressBar::new(dirs.len() as u64));
     overall_progress.set_style(
-        ProgressStyle::with_template("{prefix:<30!.blue} {bar:40} {pos:>3}/{len:3} [{elapsed_precise}]")
+        ProgressStyle::with_template("{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]")
             .unwrap()
-            .progress_chars("##-"),
+            .progress_chars("=> "),
     );
     overall_progress.set_prefix("OVERALL PROGRESS");
 
@@ -92,9 +92,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgress, overall_progress: ProgressBar) {
     let pb = m.add(indicatif::ProgressBar::new(1));
     pb.set_style(
-        ProgressStyle::with_template("{prefix:<30!.blue} {bar:40.cyan/blue} {pos:>3}/{len:3} {msg}")
+        ProgressStyle::with_template("{prefix:<30!} [{bar:40}] {pos:>3}/{len:3} {msg}")
             .unwrap()
-            .progress_chars("##-"),
+            .progress_chars("-> "),
     );
     pb.set_prefix(format!("- {}", path.file_name().unwrap().to_string_lossy()));
     pb.set_length(4); // opening, analyzing, storing (repo, logs), done
@@ -111,6 +111,7 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             opened.analyze()
         })
         .and_then(|repo| {
+            overall_progress.inc(1);
             pb.set_message("storing into repositories table");
             pb.inc(1);
             let mut conn = pool.get()?;
@@ -163,7 +164,6 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
             tx.commit()?;
             pb.set_message("done");
             pb.finish_and_clear();
-            overall_progress.inc(1);
             Ok(())
         })
         .ok();
