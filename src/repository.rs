@@ -1,5 +1,4 @@
-use std::ops::Deref;
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, ops::Deref, path::PathBuf};
 
 use camino::Utf8PathBuf;
 use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
