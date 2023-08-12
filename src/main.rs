@@ -1,3 +1,5 @@
+use camino::Utf8PathBuf;
+use std::collections::HashMap;
 use std::{error::Error, path::PathBuf};
 
 use clap::Parser;
@@ -41,6 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             for path in &dirs {
                 tasks.push(tokio::spawn(exec(
                     path.clone(),
+                    get_config(&args.config).author_map.clone(),
                     pool.clone(),
                     m.clone(),
                     overall_progress.clone(),
@@ -89,8 +92,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgress, overall_progress: ProgressBar) {
-    let pb = m.add(indicatif::ProgressBar::new(1));
+async fn exec(
+    path: PathBuf,
+    author_map: Option<HashMap<String, String>>,
+    pool: Pool<SqliteConnectionManager>,
+    m: MultiProgress,
+    overall_progress: ProgressBar,
+) {
+    let pb = m.add(ProgressBar::new(1));
     pb.set_style(
         ProgressStyle::with_template("{prefix:<30!} [{bar:40}] {pos:>3}/{len:3} {msg}")
             .unwrap()
@@ -108,7 +117,7 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
         .and_then(|opened| {
             pb.set_message("analyzing");
             pb.inc(1);
-            opened.analyze()
+            opened.analyze(author_map)
         })
         .and_then(|repo| {
             overall_progress.inc(1);
@@ -169,6 +178,14 @@ async fn exec(path: PathBuf, pool: Pool<SqliteConnectionManager>, m: MultiProgre
         .ok();
 }
 
+fn get_config(config: &Utf8PathBuf) -> Config {
+    if config.exists() && config.is_file() {
+        serde_json::from_str::<Config>(&std::fs::read_to_string(config).unwrap()).unwrap()
+    } else {
+        Config::default()
+    }
+}
+
 fn get_directories_to_scan(args: &Args) -> (Vec<PathBuf>, Vec<String>) {
     let Args {
         root,
@@ -179,11 +196,7 @@ fn get_directories_to_scan(args: &Args) -> (Vec<PathBuf>, Vec<String>) {
     } = args;
 
     let mut ignored = Vec::new();
-    let config = if config.exists() && config.is_file() {
-        serde_json::from_str::<Config>(&std::fs::read_to_string(config).unwrap()).unwrap()
-    } else {
-        Config::default()
-    };
+    let config = get_config(config);
 
     let dirs = if *recursive {
         WalkDir::new(root)

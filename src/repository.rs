@@ -1,4 +1,4 @@
-use std::{error::Error, ops::Deref, path::PathBuf};
+use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
 
 use camino::Utf8PathBuf;
 use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
@@ -85,7 +85,10 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 }
 
 impl GitRepository<Opened> {
-    pub fn analyze(&self) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
+    pub fn analyze(
+        &self,
+        author_map: Option<HashMap<String, String>>,
+    ) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
         let mut revwalk = self.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;
         revwalk.push(self.head)?;
@@ -142,11 +145,19 @@ impl GitRepository<Opened> {
                     })
                     .unwrap_or((0, 0, vec![]));
 
+                let mut author_name = commit.author().name().unwrap_or("(no author name)").to_string();
+                let author_email = commit.author().email().unwrap_or("(no author email)").to_string();
+                if let Some(map) = &author_map {
+                    if let Some(name) = map.get(&author_email) {
+                        author_name = name.clone();
+                    }
+                }
+
                 GitLog {
                     commit_hash: commit.id().to_string(),
                     parent_hash: parent_oid.unwrap_or(Oid::zero()).to_string(),
-                    author_name: commit.author().name().unwrap_or("(no author name)").to_string(),
-                    author_email: commit.author().email().unwrap_or("(no author email)").to_string(),
+                    author_name,
+                    author_email,
                     commit_datetime: commit.time().seconds(),
                     message: commit.summary().unwrap_or("(no commit summary)").to_string(),
                     insertions,
