@@ -1,7 +1,6 @@
-use camino::Utf8PathBuf;
-use std::collections::HashMap;
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashMap, error::Error, path::PathBuf};
 
+use camino::Utf8PathBuf;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use r2d2::Pool;
