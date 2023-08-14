@@ -23,8 +23,8 @@ pub struct Args {
     #[clap(short, long, default_value = "repositories.db")]
     pub database: Utf8PathBuf,
 
-    /// Path to JSON configuration file
-    #[clap(short = 'f', long, default_value = "config.json")]
+    /// Path to TOML configuration file
+    #[clap(short = 'f', long, default_value = "config.toml")]
     pub config: Utf8PathBuf,
 
     /// Delete all records from the database before scanning

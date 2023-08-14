@@ -181,7 +181,7 @@ async fn exec(
 
 fn get_config(config: &Utf8PathBuf) -> Config {
     if config.exists() && config.is_file() {
-        serde_json::from_str::<Config>(&std::fs::read_to_string(config).unwrap()).unwrap()
+        toml::from_str(&std::fs::read_to_string(config).unwrap()).unwrap()
     } else {
         Config::default()
     }
