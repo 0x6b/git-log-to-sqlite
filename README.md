@@ -32,22 +32,20 @@ Options:
 
 ### Configuration
 
-By default, the tool will look for a file named `config.json` in the current directory. All the configurations are optional.
+By default, the tool will look for a file named `config.toml` in the current directory. All the configurations are optional.
 
-- `ignored_repositories`: You can ignore some repositories by adding their directory names to this list.
-- `author_map`: You can map author emails to their names by adding them to this map, to normalize the author names.
+- `ignored_repositories`: You can ignore some directories by adding their names to this list.
+- `author_map`: You can override the author names by adding their emails to this map, to normalize the author names.
 
-```json
-{
-  "ignored_repositories": [
+```toml
+"ignored_repositories" = [
     "directory-name-of-repository-to-ignore",
     "..."
-  ],
-  "author_map": {
-    "email@example.com": "Name of the author",
-    "...": "..."
-  }
-}
+]
+
+[author_map]
+"email@example.com" = "Name of the author"
+"..." = "..."
 ```
 
 ## Schema
