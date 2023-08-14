@@ -61,17 +61,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     overall_progress.finish_and_clear();
 
     let conn = pool.get()?;
-    let mut stmt = conn.prepare("SELECT name FROM repositories")?;
+    let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
     let repositories = stmt
         .query_map(params![], |row| row.get::<_, String>(0))?
         .filter_map(|name| name.ok())
         .collect::<Vec<_>>();
 
-    println!("# {} repositories in the table", repositories.len());
+    println!(
+        "# {} repositories in the table\n{}",
+        repositories.len(),
+        repositories.join(", ")
+    );
     println!(
         "# {} ignored repositories:\n{}",
         ignored_repositories.len(),
-        ignored_repositories.join("\n")
+        ignored_repositories.join(", ")
     );
 
     let not_stored_dirs = dirs
@@ -79,9 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
         .map(|e| e.display().to_string())
         .collect::<Vec<_>>();
-    if not_stored_dirs.is_empty() {
-        println!("# All repositories were stored successfully");
-    } else {
+    if !not_stored_dirs.is_empty() {
         println!(
             "# {} directories were not stored for some reason. Maybe empty, or not a git repository?:\n{}",
             not_stored_dirs.len(),
