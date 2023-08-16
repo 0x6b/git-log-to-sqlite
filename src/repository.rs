@@ -5,27 +5,20 @@ use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
 
 use crate::log::GitLog;
 
-pub struct Uninitialized {
-    name: String,
-    path: PathBuf,
-}
-
-pub struct Opened {
-    name: String,
-    repo: Repository,
-    head: Oid,
-}
-
-pub struct Analyzed {
-    name: String,
-    url: String,
-    logs: Vec<GitLog>,
-}
-
+/// A git repository that can be used to analyze the commit history of a git repository. To prevent
+/// the impossible operation from executing (i.e. run analysis before properly opening it, or
+/// getting logs before analyzing it, etc.), the repository must be successfully opened before it
+/// can be used to analysis.
+///
+/// The state of the repository is represented by the type parameter `S`. The state transitions are
+/// as follows:
+///
+/// Uninitialized -> Opened -> Analyzed
 pub struct GitRepository<S> {
     state: S,
 }
 
+/// Convenient deref implementation which returns the inner state.
 impl<S> Deref for GitRepository<S> {
     type Target = S;
 
@@ -34,7 +27,30 @@ impl<S> Deref for GitRepository<S> {
     }
 }
 
+/// The initial state of the git repository.
+pub struct Uninitialized {
+    name: String,
+    path: PathBuf,
+}
+
+/// The state of the git repository after it has been opened. After successful opening, we can use
+/// the repository to analyze the commit history.
+pub struct Opened {
+    name: String,
+    repo: Repository,
+    head: Oid,
+}
+
+/// The state of the git repository after it has been analyzed. After successful analysis, we can
+/// use the repository to get the commit history.
+pub struct Analyzed {
+    name: String,
+    url: String,
+    logs: Vec<GitLog>,
+}
+
 impl GitRepository<Uninitialized> {
+    /// Creates a new git repository with the specified path. `path` must be a valid directory.
     pub fn try_new(path: PathBuf) -> Result<Self, Box<dyn Error>> {
         let path = Utf8PathBuf::from_path_buf(path).unwrap();
         if path.is_file() {
@@ -65,6 +81,7 @@ impl GitRepository<Uninitialized> {
     }
 }
 
+/// Tries to open the git repository. If successful, returns a `GitRepository<Opened>`.
 impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
     type Error = Box<dyn Error>;
 
@@ -85,6 +102,8 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
 }
 
 impl GitRepository<Opened> {
+    /// Analyzes the commit history of the git repository. If successful, returns a
+    /// `GitRepository<Analyzed>`.
     pub fn analyze(
         &self,
         author_map: Option<HashMap<String, String>>,
@@ -128,7 +147,10 @@ impl GitRepository<Opened> {
                     )
                     .and_then(|mut diff| {
                         diff.find_similar(Some(
-                            &mut DiffFindOptions::new().renames(true).copies(true).exact_match_only(true),
+                            &mut DiffFindOptions::new()
+                                .renames(true)
+                                .copies(true)
+                                .exact_match_only(true),
                         ))
                         .map(|_| {
                             let changed_files = diff
@@ -145,8 +167,16 @@ impl GitRepository<Opened> {
                     })
                     .unwrap_or((0, 0, vec![]));
 
-                let mut author_name = commit.author().name().unwrap_or("(no author name)").to_string();
-                let author_email = commit.author().email().unwrap_or("(no author email)").to_string();
+                let mut author_name = commit
+                    .author()
+                    .name()
+                    .unwrap_or("(no author name)")
+                    .to_string();
+                let author_email = commit
+                    .author()
+                    .email()
+                    .unwrap_or("(no author email)")
+                    .to_string();
                 if let Some(map) = &author_map {
                     if let Some(name) = map.get(&author_email) {
                         author_name = name.clone();
@@ -159,7 +189,10 @@ impl GitRepository<Opened> {
                     author_name,
                     author_email,
                     commit_datetime: commit.time().seconds(),
-                    message: commit.summary().unwrap_or("(no commit summary)").to_string(),
+                    message: commit
+                        .summary()
+                        .unwrap_or("(no commit summary)")
+                        .to_string(),
                     insertions,
                     deletions,
                     changed_files,
@@ -194,6 +227,7 @@ impl GitRepository<Analyzed> {
         &self.url
     }
 
+    /// Finally we can get the logs! after initializing, opening, analyzing the git repository.
     pub fn logs(&self) -> &Vec<GitLog> {
         &self.logs
     }

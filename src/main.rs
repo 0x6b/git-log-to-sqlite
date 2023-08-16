@@ -28,9 +28,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let overall_progress = m.add(ProgressBar::new(dirs.len() as u64));
     overall_progress.set_style(
-        ProgressStyle::with_template("{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]")
-            .unwrap()
-            .progress_chars("=> "),
+        ProgressStyle::with_template(
+            "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
+        )
+        .unwrap()
+        .progress_chars("=> "),
     );
     overall_progress.set_prefix("OVERALL PROGRESS");
 
@@ -228,7 +230,10 @@ fn get_directories_to_scan(args: &Args) -> (Vec<PathBuf>, Vec<String>) {
     (dirs, ignored)
 }
 
-fn prepare_database(pool: &Pool<SqliteConnectionManager>, clear: bool) -> Result<(), Box<dyn Error>> {
+fn prepare_database(
+    pool: &Pool<SqliteConnectionManager>,
+    clear: bool,
+) -> Result<(), Box<dyn Error>> {
     let conn = pool.get()?;
 
     conn.execute(
