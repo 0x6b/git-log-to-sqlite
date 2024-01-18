@@ -1,6 +1,6 @@
 # git-log-to-sqlite
 
-A tool to convert git repository logs (without merge commit) to sqlite database.
+A tool to convert git repository logs (without merge commit) to a sqlite database.
 
 ## Installation
 
