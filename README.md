@@ -23,7 +23,7 @@ Options:
   -r, --recursive                  Recursively scan the root directory
   -m, --max-depth <MAX_DEPTH>      Max depth of the recursive scan [default: 1]
   -d, --database <DATABASE>        Path to the database [default: repositories.db]
-  -f, --config <CONFIG>            Path to JSON configuration file [default: config.json]
+  -f, --config <CONFIG>            Path to TOML configuration file [default: config.toml]
   -c, --clear                      Delete all records from the database before scanning
   -n, --num-threads <NUM_THREADS>  Number of worker threads [default: 8]
   -h, --help                       Print help
