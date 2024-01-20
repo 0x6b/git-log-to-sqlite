@@ -6,11 +6,12 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 
 use crate::{
-    args::{Args, Config},
+    args::Args,
     repository::{GitRepository, Uninitialized},
 };
 
 mod args;
+mod config;
 mod log;
 mod repository;
 
