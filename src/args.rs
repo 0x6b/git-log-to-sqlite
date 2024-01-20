@@ -36,6 +36,12 @@ pub struct Args {
     pub num_threads: usize,
 }
 
+impl Args {
+    pub fn new() -> Self {
+        Self::parse()
+    }
+}
+
 /// Configuration file
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {

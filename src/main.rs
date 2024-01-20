@@ -1,7 +1,6 @@
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
 use camino::Utf8PathBuf;
-use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -18,7 +17,7 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
+    let args = Args::new();
     let (dirs, ignored_repositories) = get_directories_to_scan(&args);
 
     let mut tasks = Vec::new();
