@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if !not_stored_dirs.is_empty() {
         println!(
-            "# {} directories were not stored for some reason. Maybe empty, or not a git repository?:\n{}",
+            "# {} directories were not stored for some reason. Maybe empty, or not a git repository?:\n\n{}",
             not_stored_dirs.len(),
             not_stored_dirs.join("\n")
         );
