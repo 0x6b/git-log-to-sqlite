@@ -54,12 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("# Done in {} seconds", overall_progress.elapsed().as_millis() as f64 / 1000.0);
     overall_progress.finish_and_clear();
 
-    let conn = analyzer.pool.get()?;
-    let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
-    let repositories = stmt
-        .query_map(params![], |row| row.get::<_, String>(0))?
-        .filter_map(|name| name.ok())
-        .collect::<Vec<_>>();
+    let (repositories, not_stored_dirs) = analyzer.get_repositories()?;
 
     println!("# {} repositories in the table\n{}", repositories.len(), repositories.join(", "));
     println!(
@@ -68,12 +63,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         analyzer.ignored_repositories.join(", ")
     );
 
-    let not_stored_dirs = analyzer
-        .dirs
-        .iter()
-        .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
-        .map(|e| e.display().to_string())
-        .collect::<Vec<_>>();
     if !not_stored_dirs.is_empty() {
         println!(
             "# {} directories were not stored for some reason. Maybe empty, or not a git repository?:\n{}",

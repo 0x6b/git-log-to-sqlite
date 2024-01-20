@@ -4,6 +4,7 @@ use camino::Utf8PathBuf;
 use clap::Parser;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
 use walkdir::WalkDir;
 
 use crate::config::Config;
@@ -195,5 +196,26 @@ impl GitRepositoryAnalyzer<Uninitialized> {
         }
 
         Ok(())
+    }
+}
+
+impl GitRepositoryAnalyzer<Prepared> {
+    /// Get the list of repositories stored in the database and the list of directories that are not
+    pub fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
+        let stored = stmt
+            .query_map(params![], |row| row.get::<_, String>(0))?
+            .filter_map(|name| name.ok())
+            .collect::<Vec<_>>();
+
+        let not_stored = self
+            .dirs
+            .iter()
+            .filter(|e| !stored.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
+            .map(|e| e.display().to_string())
+            .collect::<Vec<_>>();
+
+        Ok((stored, not_stored))
     }
 }
