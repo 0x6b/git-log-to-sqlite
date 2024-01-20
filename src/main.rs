@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
 
-    let overall_progress = m.add(ProgressBar::new(analyzer.dirs.len() as u64));
+    let overall_progress = m.add(ProgressBar::new(analyzer.env.dirs.len() as u64));
     overall_progress.set_style(
         ProgressStyle::with_template(
             "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
@@ -39,10 +39,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .unwrap()
         .block_on(async {
-            for path in &analyzer.dirs {
+            for path in &analyzer.env.dirs {
                 tasks.push(tokio::spawn(exec(
                     path.clone(),
-                    analyzer.author_map.clone(),
+                    analyzer.env.author_map.clone(),
                     pool.clone(),
                     m.clone(),
                     overall_progress.clone(),
@@ -67,11 +67,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("# {} repositories in the table\n{}", repositories.len(), repositories.join(", "));
     println!(
         "# {} ignored repositories:\n{}",
-        analyzer.ignored_repositories.len(),
-        analyzer.ignored_repositories.join(", ")
+        analyzer.env.ignored_repositories.len(),
+        analyzer.env.ignored_repositories.join(", ")
     );
 
     let not_stored_dirs = analyzer
+        .env
         .dirs
         .iter()
         .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))

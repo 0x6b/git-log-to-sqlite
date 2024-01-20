@@ -40,16 +40,20 @@ pub struct Analyzer {
     #[clap(short, long, default_value = "8")]
     pub num_threads: usize,
 
-    /// List of directories to scan
+    /// Internal running environment
     #[clap(skip)]
+    pub env: Env,
+}
+
+#[derive(Debug, Default)]
+pub struct Env {
+    /// List of directories to scan
     pub dirs: Vec<PathBuf>,
 
     /// List of ignored repositories
-    #[clap(skip)]
     pub ignored_repositories: Vec<String>,
 
     /// Email address and user name map to normalize the author name
-    #[clap(skip)]
     pub author_map: Option<HashMap<String, String>>,
 }
 
@@ -57,7 +61,11 @@ impl Analyzer {
     pub fn new() -> Self {
         let analyzer = Self::parse();
         let (dirs, ignored_repositories, author_map) = analyzer.get_directories_to_scan();
-        Analyzer { dirs, ignored_repositories, author_map, ..analyzer }
+
+        Analyzer {
+            env: Env { dirs, ignored_repositories, author_map },
+            ..analyzer
+        }
     }
 
     fn get_config(&self) -> Config {
