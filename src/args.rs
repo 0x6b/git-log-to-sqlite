@@ -1,7 +1,9 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, error::Error, path::PathBuf};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use walkdir::WalkDir;
 
 use crate::config::Config;
@@ -101,5 +103,61 @@ impl Args {
         };
 
         (dirs, ignored, config.author_map.clone())
+    }
+
+    pub fn prepare_database(
+        &self,
+        pool: &Pool<SqliteConnectionManager>,
+    ) -> Result<(), Box<dyn Error>> {
+        let conn = pool.get()?;
+
+        conn.execute(
+            r#"
+        CREATE TABLE IF NOT EXISTS repositories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            url TEXT
+        )
+        "#,
+            [],
+        )?;
+
+        conn.execute(
+            r#"
+        CREATE TABLE IF NOT EXISTS logs (
+            commit_hash TEXT PRIMARY KEY,
+            author_name TEXT NOT NULL,
+            author_email TEXT NOT NULL,
+            message TEXT,
+            commit_datetime DATETIME NOT NULL,
+            insertions INTEGER,
+            deletions INTEGER,
+            repository_id INTEGER,
+            parent_hash TEXT,
+            FOREIGN KEY (repository_id) REFERENCES repositories (id)
+        )
+        "#,
+            [],
+        )?;
+
+        conn.execute(
+            r#"
+        CREATE TABLE IF NOT EXISTS changed_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            commit_hash TEXT NOT NULL,
+            file_path TEXT,
+            FOREIGN KEY (commit_hash) REFERENCES logs (commit_hash)
+        )
+        "#,
+            [],
+        )?;
+
+        if self.clear {
+            conn.execute("DELETE FROM repositories", [])?;
+            conn.execute("DELETE FROM logs", [])?;
+            conn.execute("DELETE FROM changed_files", [])?;
+        }
+
+        Ok(())
     }
 }

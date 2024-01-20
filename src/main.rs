@@ -18,10 +18,11 @@ mod repository;
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::new();
 
+    let pool = Pool::new(SqliteConnectionManager::file(&args.database)).unwrap();
+    args.prepare_database(&pool)?;
+
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
-    let pool = Pool::new(SqliteConnectionManager::file(args.database)).unwrap();
-    prepare_database(&pool, args.clear).unwrap();
 
     let overall_progress = m.add(ProgressBar::new(args.dirs.len() as u64));
     overall_progress.set_style(
@@ -170,60 +171,4 @@ async fn exec(
             Ok(())
         })
         .ok();
-}
-
-fn prepare_database(
-    pool: &Pool<SqliteConnectionManager>,
-    clear: bool,
-) -> Result<(), Box<dyn Error>> {
-    let conn = pool.get()?;
-
-    conn.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS repositories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            url TEXT
-        )
-        "#,
-        [],
-    )?;
-
-    conn.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS logs (
-            commit_hash TEXT PRIMARY KEY,
-            author_name TEXT NOT NULL,
-            author_email TEXT NOT NULL,
-            message TEXT,
-            commit_datetime DATETIME NOT NULL,
-            insertions INTEGER,
-            deletions INTEGER,
-            repository_id INTEGER,
-            parent_hash TEXT,
-            FOREIGN KEY (repository_id) REFERENCES repositories (id)
-        )
-        "#,
-        [],
-    )?;
-
-    conn.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS changed_files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            commit_hash TEXT NOT NULL,
-            file_path TEXT,
-            FOREIGN KEY (commit_hash) REFERENCES logs (commit_hash)
-        )
-        "#,
-        [],
-    )?;
-
-    if clear {
-        conn.execute("DELETE FROM repositories", [])?;
-        conn.execute("DELETE FROM logs", [])?;
-        conn.execute("DELETE FROM changed_files", [])?;
-    }
-
-    Ok(())
 }
