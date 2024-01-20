@@ -71,9 +71,7 @@ impl GitRepository<Uninitialized> {
             }
         };
 
-        Ok(Self {
-            state: Uninitialized { path, name },
-        })
+        Ok(Self { state: Uninitialized { path, name } })
     }
 
     pub fn open(self) -> Result<GitRepository<Opened>, Box<dyn Error>> {
@@ -91,13 +89,7 @@ impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
             .head()?
             .target()
             .ok_or(git2::Error::from_str("failed to get OID to HEAD"))?;
-        Ok(Self {
-            state: Opened {
-                repo,
-                name: r.name.clone(),
-                head,
-            },
-        })
+        Ok(Self { state: Opened { repo, name: r.name.clone(), head } })
     }
 }
 
@@ -167,16 +159,10 @@ impl GitRepository<Opened> {
                     })
                     .unwrap_or((0, 0, vec![]));
 
-                let mut author_name = commit
-                    .author()
-                    .name()
-                    .unwrap_or("(no author name)")
-                    .to_string();
-                let author_email = commit
-                    .author()
-                    .email()
-                    .unwrap_or("(no author email)")
-                    .to_string();
+                let mut author_name =
+                    commit.author().name().unwrap_or("(no author name)").to_string();
+                let author_email =
+                    commit.author().email().unwrap_or("(no author email)").to_string();
                 if let Some(map) = &author_map {
                     if let Some(name) = map.get(&author_email) {
                         author_name = name.clone();
@@ -189,10 +175,7 @@ impl GitRepository<Opened> {
                     author_name,
                     author_email,
                     commit_datetime: commit.time().seconds(),
-                    message: commit
-                        .summary()
-                        .unwrap_or("(no commit summary)")
-                        .to_string(),
+                    message: commit.summary().unwrap_or("(no commit summary)").to_string(),
                     insertions,
                     deletions,
                     changed_files,
@@ -209,11 +192,7 @@ impl GitRepository<Opened> {
             .replace("git@github.com:", "https://github.com/");
 
         Ok(GitRepository {
-            state: Analyzed {
-                name: self.name.clone(),
-                url,
-                logs,
-            },
+            state: Analyzed { name: self.name.clone(), url, logs },
         })
     }
 }
