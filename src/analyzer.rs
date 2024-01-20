@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, path::PathBuf};
+use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
@@ -8,10 +8,27 @@ use walkdir::WalkDir;
 
 use crate::config::Config;
 
-/// Git repositories analyzer
+/// A git repository analyzer. To prevent the impossible operation from executing (i.e. run analysis
+/// before setting up the database, etc.), the analyzer must be successfully constructed before
+/// analysis. The state transitions are as follows:
+///
+/// Uninitialized -> Prepared
+pub struct GitRepositoryAnalyzer<S> {
+    state: S,
+}
+
+/// Convenient deref implementation which returns the inner state.
+impl<S> Deref for GitRepositoryAnalyzer<S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
 #[derive(Parser)]
 #[clap(about, version)]
-pub struct Analyzer {
+pub struct Uninitialized {
     /// Path to the root directory to scan
     #[clap()]
     pub root: Utf8PathBuf,
@@ -39,14 +56,15 @@ pub struct Analyzer {
     /// Number of worker threads
     #[clap(short, long, default_value = "8")]
     pub num_threads: usize,
-
-    /// Internal running environment
-    #[clap(skip)]
-    pub env: Env,
 }
 
-#[derive(Debug, Default)]
-pub struct Env {
+pub struct Prepared {
+    /// Number of worker threads
+    pub num_threads: usize,
+
+    /// Database connection pool
+    pub pool: Pool<SqliteConnectionManager>,
+
     /// List of directories to scan
     pub dirs: Vec<PathBuf>,
 
@@ -57,24 +75,25 @@ pub struct Env {
     pub author_map: Option<HashMap<String, String>>,
 }
 
-impl Analyzer {
+impl GitRepositoryAnalyzer<Uninitialized> {
     pub fn new() -> Self {
-        let analyzer = Self::parse();
-        let (dirs, ignored_repositories, author_map) = analyzer.get_directories_to_scan();
-
-        Analyzer {
-            env: Env { dirs, ignored_repositories, author_map },
-            ..analyzer
-        }
+        GitRepositoryAnalyzer { state: Uninitialized::parse() }
     }
 
-    fn get_config(&self) -> Config {
-        let config = &self.config;
-        if config.exists() && config.is_file() {
-            toml::from_str(&std::fs::read_to_string(config).unwrap()).unwrap()
-        } else {
-            Config::default()
-        }
+    pub fn try_prepare(self) -> Result<GitRepositoryAnalyzer<Prepared>, Box<dyn Error>> {
+        let (dirs, ignored_repositories, author_map) = self.get_directories_to_scan();
+        let pool = Pool::new(SqliteConnectionManager::file(&self.database))?;
+        self.prepare_database(&pool)?;
+
+        Ok(GitRepositoryAnalyzer {
+            state: Prepared {
+                num_threads: self.num_threads,
+                pool,
+                dirs,
+                ignored_repositories,
+                author_map,
+            },
+        })
     }
 
     fn get_directories_to_scan(
@@ -111,6 +130,15 @@ impl Analyzer {
         };
 
         (dirs, ignored, config.author_map.clone())
+    }
+
+    fn get_config(&self) -> Config {
+        let config = &self.config;
+        if config.exists() && config.is_file() {
+            toml::from_str(&std::fs::read_to_string(config).unwrap()).unwrap()
+        } else {
+            Config::default()
+        }
     }
 
     pub fn prepare_database(

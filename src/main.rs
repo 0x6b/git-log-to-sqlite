@@ -6,7 +6,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 
 use crate::{
-    analyzer::Analyzer,
+    analyzer::GitRepositoryAnalyzer,
     repository::{GitRepository, Uninitialized},
 };
 
@@ -16,15 +16,12 @@ mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let analyzer = Analyzer::new();
-
-    let pool = Pool::new(SqliteConnectionManager::file(&analyzer.database)).unwrap();
-    analyzer.prepare_database(&pool)?;
+    let analyzer = GitRepositoryAnalyzer::new().try_prepare()?;
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
 
-    let overall_progress = m.add(ProgressBar::new(analyzer.env.dirs.len() as u64));
+    let overall_progress = m.add(ProgressBar::new(analyzer.dirs.len() as u64));
     overall_progress.set_style(
         ProgressStyle::with_template(
             "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
@@ -39,11 +36,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .unwrap()
         .block_on(async {
-            for path in &analyzer.env.dirs {
+            for path in &analyzer.dirs {
                 tasks.push(tokio::spawn(exec(
                     path.clone(),
-                    analyzer.env.author_map.clone(),
-                    pool.clone(),
+                    analyzer.author_map.clone(),
+                    analyzer.pool.clone(),
                     m.clone(),
                     overall_progress.clone(),
                 )));
@@ -57,7 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("# Done in {} seconds", overall_progress.elapsed().as_millis() as f64 / 1000.0);
     overall_progress.finish_and_clear();
 
-    let conn = pool.get()?;
+    let conn = analyzer.pool.get()?;
     let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
     let repositories = stmt
         .query_map(params![], |row| row.get::<_, String>(0))?
@@ -67,12 +64,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("# {} repositories in the table\n{}", repositories.len(), repositories.join(", "));
     println!(
         "# {} ignored repositories:\n{}",
-        analyzer.env.ignored_repositories.len(),
-        analyzer.env.ignored_repositories.join(", ")
+        analyzer.ignored_repositories.len(),
+        analyzer.ignored_repositories.join(", ")
     );
 
     let not_stored_dirs = analyzer
-        .env
         .dirs
         .iter()
         .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
