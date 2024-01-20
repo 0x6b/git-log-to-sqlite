@@ -53,10 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         });
 
-    println!(
-        "# Done in {} seconds",
-        overall_progress.elapsed().as_millis() as f64 / 1000.0
-    );
+    println!("# Done in {} seconds", overall_progress.elapsed().as_millis() as f64 / 1000.0);
     overall_progress.finish_and_clear();
 
     let conn = pool.get()?;
@@ -66,11 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .filter_map(|name| name.ok())
         .collect::<Vec<_>>();
 
-    println!(
-        "# {} repositories in the table\n{}",
-        repositories.len(),
-        repositories.join(", ")
-    );
+    println!("# {} repositories in the table\n{}", repositories.len(), repositories.join(", "));
     println!(
         "# {} ignored repositories:\n{}",
         args.ignored_repositories.len(),

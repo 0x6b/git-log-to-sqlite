@@ -1,9 +1,10 @@
-use crate::config::Config;
+use std::{collections::HashMap, path::PathBuf};
+
 use camino::Utf8PathBuf;
 use clap::Parser;
-use std::collections::HashMap;
-use std::path::PathBuf;
 use walkdir::WalkDir;
+
+use crate::config::Config;
 
 /// Command line arguments
 #[derive(Parser)]
@@ -54,12 +55,7 @@ impl Args {
     pub fn new() -> Self {
         let args = Self::parse();
         let (dirs, ignored_repositories, author_map) = args.get_directories_to_scan();
-        Args {
-            dirs,
-            ignored_repositories,
-            author_map,
-            ..args
-        }
+        Args { dirs, ignored_repositories, author_map, ..args }
     }
 
     fn get_config(&self) -> Config {
