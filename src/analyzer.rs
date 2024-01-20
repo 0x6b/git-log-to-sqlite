@@ -2,12 +2,13 @@ use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
 
 use camino::Utf8PathBuf;
 use clap::Parser;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 use walkdir::WalkDir;
 
-use crate::config::Config;
+use crate::{config::Config, repository::GitRepository};
 
 /// A git repository analyzer. To prevent the impossible operation from executing (i.e. run analysis
 /// before setting up the database, etc.), the analyzer must be successfully constructed before
@@ -200,6 +201,45 @@ impl GitRepositoryAnalyzer<Uninitialized> {
 }
 
 impl GitRepositoryAnalyzer<Prepared> {
+    /// Analyze the git repositories and return the elapsed time in seconds
+    pub fn analyze(&self) -> Result<f64, Box<dyn Error>> {
+        let mut tasks = Vec::new();
+        let m = MultiProgress::new();
+
+        let overall_progress = m.add(ProgressBar::new(self.dirs.len() as u64));
+        overall_progress.set_style(
+            ProgressStyle::with_template(
+                "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
+            )
+            .unwrap()
+            .progress_chars("=> "),
+        );
+        overall_progress.set_prefix("OVERALL PROGRESS");
+
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(self.num_threads)
+            .build()
+            .unwrap()
+            .block_on(async {
+                for path in &self.dirs {
+                    tasks.push(tokio::spawn(Self::exec(
+                        path.clone(),
+                        self.author_map.clone(),
+                        self.pool.clone(),
+                        m.clone(),
+                        overall_progress.clone(),
+                    )));
+                }
+
+                for task in tasks {
+                    task.await.unwrap();
+                }
+            });
+
+        overall_progress.finish_and_clear();
+        Ok(overall_progress.elapsed().as_millis() as f64 / 1000.0)
+    }
+
     /// Get the list of repositories stored in the database and the list of directories that are not
     pub fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
         let conn = self.pool.get()?;
@@ -217,5 +257,91 @@ impl GitRepositoryAnalyzer<Prepared> {
             .collect::<Vec<_>>();
 
         Ok((stored, not_stored))
+    }
+
+    async fn exec(
+        path: PathBuf,
+        author_map: Option<HashMap<String, String>>,
+        pool: Pool<SqliteConnectionManager>,
+        m: MultiProgress,
+        overall_progress: ProgressBar,
+    ) {
+        let pb = m.add(ProgressBar::new(1));
+        pb.set_style(
+            ProgressStyle::with_template("{prefix:<30!} [{bar:40}] {pos:>3}/{len:3} {msg}")
+                .unwrap()
+                .progress_chars("-> "),
+        );
+        pb.set_prefix(format!("- {}", path.file_name().unwrap().to_string_lossy()));
+        pb.set_length(4); // opening, analyzing, storing (repo, logs), done
+
+        GitRepository::<crate::repository::Uninitialized>::try_new(path)
+            .and_then(|uninitialized| {
+                pb.set_message("opening");
+                pb.inc(1);
+                uninitialized.open()
+            })
+            .and_then(|opened| {
+                pb.set_message("analyzing");
+                pb.inc(1);
+                opened.analyze(author_map)
+            })
+            .and_then(|repo| {
+                overall_progress.inc(1);
+                pb.set_message("storing into repositories table");
+                pb.inc(1);
+                let mut conn = pool.get()?;
+                conn.execute(
+                    "INSERT OR IGNORE INTO repositories (name, url) VALUES (?1, ?2)",
+                    params![repo.name(), repo.url()],
+                )?;
+
+                let tx = conn.transaction()?;
+                pb.set_message(format!("storing {} logs", repo.logs().len()));
+                pb.inc(1);
+                for log in repo.logs() {
+                    tx.execute(
+                        r#"
+                        INSERT INTO logs (
+                            commit_hash,
+                            parent_hash,
+                            author_name,
+                            author_email,
+                            commit_datetime,
+                            message,
+                            insertions,
+                            deletions,
+                            repository_id
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM repositories WHERE name = ?));
+                        "#,
+                        params![
+                        log.commit_hash,
+                        log.parent_hash,
+                        log.author_name,
+                        log.author_email,
+                        log.commit_datetime,
+                        log.message,
+                        log.insertions as i64,
+                        log.deletions as i64,
+                        repo.name()
+                    ],
+                    )?;
+
+                    pb.set_message(format!("storing {} changed files", log.changed_files.len()));
+                    for path in &log.changed_files {
+                        tx.execute(
+                            "INSERT INTO changed_files (commit_hash, file_path) VALUES (?1, ?2)",
+                            params![log.commit_hash, path],
+                        )?;
+                    }
+                }
+
+                tx.commit()?;
+                pb.set_message("done");
+                pb.finish_and_clear();
+                Ok(())
+            })
+            .ok();
     }
 }
