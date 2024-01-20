@@ -1,11 +1,9 @@
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
-use camino::Utf8PathBuf;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
-use walkdir::WalkDir;
 
 use crate::{
     args::{Args, Config},
@@ -18,14 +16,13 @@ mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::new();
-    let (dirs, ignored_repositories) = get_directories_to_scan(&args);
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
     let pool = Pool::new(SqliteConnectionManager::file(args.database)).unwrap();
     prepare_database(&pool, args.clear).unwrap();
 
-    let overall_progress = m.add(ProgressBar::new(dirs.len() as u64));
+    let overall_progress = m.add(ProgressBar::new(args.dirs.len() as u64));
     overall_progress.set_style(
         ProgressStyle::with_template(
             "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
@@ -40,10 +37,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .unwrap()
         .block_on(async {
-            for path in &dirs {
+            for path in &args.dirs {
                 tasks.push(tokio::spawn(exec(
                     path.clone(),
-                    get_config(&args.config).author_map.clone(),
+                    args.author_map.clone(),
                     pool.clone(),
                     m.clone(),
                     overall_progress.clone(),
@@ -75,11 +72,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     println!(
         "# {} ignored repositories:\n{}",
-        ignored_repositories.len(),
-        ignored_repositories.join(", ")
+        args.ignored_repositories.len(),
+        args.ignored_repositories.join(", ")
     );
 
-    let not_stored_dirs = dirs
+    let not_stored_dirs = args
+        .dirs
         .iter()
         .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
         .map(|e| e.display().to_string())
@@ -178,55 +176,6 @@ async fn exec(
             Ok(())
         })
         .ok();
-}
-
-fn get_config(config: &Utf8PathBuf) -> Config {
-    if config.exists() && config.is_file() {
-        toml::from_str(&std::fs::read_to_string(config).unwrap()).unwrap()
-    } else {
-        Config::default()
-    }
-}
-
-fn get_directories_to_scan(args: &Args) -> (Vec<PathBuf>, Vec<String>) {
-    let Args {
-        root,
-        recursive,
-        max_depth,
-        config,
-        ..
-    } = args;
-
-    let mut ignored = Vec::new();
-    let config = get_config(config);
-
-    let dirs = if *recursive {
-        WalkDir::new(root)
-            .max_depth(*max_depth)
-            .into_iter()
-            .skip(1) // skip root directory
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_dir())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                if name == ".git" {
-                    return false;
-                }
-                if let Some(ignored_repositories) = &config.ignored_repositories {
-                    if ignored_repositories.contains(&name) {
-                        ignored.push(name);
-                        return false;
-                    }
-                }
-                true
-            })
-            .map(|e| e.path().to_owned())
-            .collect::<Vec<_>>()
-    } else {
-        vec![root.into()]
-    };
-
-    (dirs, ignored)
 }
 
 fn prepare_database(
