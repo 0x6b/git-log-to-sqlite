@@ -6,25 +6,25 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params;
 
 use crate::{
-    args::Args,
+    analyzer::Analyzer,
     repository::{GitRepository, Uninitialized},
 };
 
-mod args;
+mod analyzer;
 mod config;
 mod log;
 mod repository;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::new();
+    let analyzer = Analyzer::new();
 
-    let pool = Pool::new(SqliteConnectionManager::file(&args.database)).unwrap();
-    args.prepare_database(&pool)?;
+    let pool = Pool::new(SqliteConnectionManager::file(&analyzer.database)).unwrap();
+    analyzer.prepare_database(&pool)?;
 
     let mut tasks = Vec::new();
     let m = MultiProgress::new();
 
-    let overall_progress = m.add(ProgressBar::new(args.dirs.len() as u64));
+    let overall_progress = m.add(ProgressBar::new(analyzer.dirs.len() as u64));
     overall_progress.set_style(
         ProgressStyle::with_template(
             "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
@@ -35,14 +35,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     overall_progress.set_prefix("OVERALL PROGRESS");
 
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(args.num_threads)
+        .worker_threads(analyzer.num_threads)
         .build()
         .unwrap()
         .block_on(async {
-            for path in &args.dirs {
+            for path in &analyzer.dirs {
                 tasks.push(tokio::spawn(exec(
                     path.clone(),
-                    args.author_map.clone(),
+                    analyzer.author_map.clone(),
                     pool.clone(),
                     m.clone(),
                     overall_progress.clone(),
@@ -67,11 +67,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("# {} repositories in the table\n{}", repositories.len(), repositories.join(", "));
     println!(
         "# {} ignored repositories:\n{}",
-        args.ignored_repositories.len(),
-        args.ignored_repositories.join(", ")
+        analyzer.ignored_repositories.len(),
+        analyzer.ignored_repositories.join(", ")
     );
 
-    let not_stored_dirs = args
+    let not_stored_dirs = analyzer
         .dirs
         .iter()
         .filter(|e| !repositories.contains(&e.file_name().unwrap().to_string_lossy().to_string()))

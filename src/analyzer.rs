@@ -8,10 +8,10 @@ use walkdir::WalkDir;
 
 use crate::config::Config;
 
-/// Command line arguments
+/// Git repositories analyzer
 #[derive(Parser)]
 #[clap(about, version)]
-pub struct Args {
+pub struct Analyzer {
     /// Path to the root directory to scan
     #[clap()]
     pub root: Utf8PathBuf,
@@ -53,11 +53,11 @@ pub struct Args {
     pub author_map: Option<HashMap<String, String>>,
 }
 
-impl Args {
+impl Analyzer {
     pub fn new() -> Self {
-        let args = Self::parse();
-        let (dirs, ignored_repositories, author_map) = args.get_directories_to_scan();
-        Args { dirs, ignored_repositories, author_map, ..args }
+        let analyzer = Self::parse();
+        let (dirs, ignored_repositories, author_map) = analyzer.get_directories_to_scan();
+        Analyzer { dirs, ignored_repositories, author_map, ..analyzer }
     }
 
     fn get_config(&self) -> Config {
