@@ -10,6 +10,10 @@ license = "MIT"
 name = "git-log-to-sqlite"
 path = "src/main.rs"
 
+[lib]
+name = "git_log_to_sqlite"
+path = "src/lib.rs"
+
 [dependencies]
 # Error management
 anyhow = "1.0.86"

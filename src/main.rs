@@ -1,10 +1,5 @@
 use anyhow::Result;
-
-use crate::analyzer::GitRepositoryAnalyzer;
-mod analyzer;
-mod config;
-mod log;
-mod repository;
+use git_log_to_sqlite::GitRepositoryAnalyzer;
 
 fn main() -> Result<()> {
     let analyzer = GitRepositoryAnalyzer::new().try_prepare()?;
