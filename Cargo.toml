@@ -11,33 +11,35 @@ name = "git-log-to-sqlite"
 path = "src/main.rs"
 
 [dependencies]
+# Error management
+anyhow = "1.0.86"
+
 # for easier path handling
-camino = { version = "1.1.6", features = ["serde"] }
+camino = { version = "1.1.7", features = ["serde"] }
 
 # for parsing command line arguments
-clap = { version = "4.4.18", features = ["derive"] }
+clap = { version = "4.5.9", features = ["derive"] }
 
 # for working with git repository
-git2 = "0.18.1"
+git2 = "0.19.0"
 
 # for indicating progress
-indicatif = "0.17.7"
+indicatif = "0.17.8"
 
 # connection pool
 r2d2 = "0.8.10"
-r2d2_sqlite = "0.23.0"
+r2d2_sqlite = "0.24.0"
 
 # for working with sqlite database
-rusqlite = "0.30.0"
+rusqlite = "0.31.0"
 
 # for deserializing config file
-serde = "1.0.195"
-serde_derive = "1.0.195"
-toml = "0.8.8"
+serde = "1.0.204"
+serde_derive = "1.0.204"
+toml = "0.8.14"
 
 # async runtime
-tokio = { version = "1.35.1", features = ["full"] }
+tokio = { version = "1.38.0", features = ["full"] }
 
 # to traverse directory
-walkdir = "2.4.0"
-anyhow = "1.0.86"
+walkdir = "2.5.0"
