@@ -104,7 +104,6 @@ impl GitRepositoryAnalyzer<Uninitialized> {
     ) -> (Vec<PathBuf>, Vec<String>, Option<HashMap<String, String>>) {
         let mut ignored = Vec::new();
         let config = &self.get_config();
-        // let author_map = config.author_map.clone().unwrap_or_default();
 
         let dirs = if self.recursive {
             WalkDir::new(&self.root)
