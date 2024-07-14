@@ -1,5 +1,6 @@
-use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
+use std::{collections::HashMap, ops::Deref, path::PathBuf};
 
+use anyhow::{anyhow, Result};
 use camino::Utf8PathBuf;
 use git2::{DiffFindOptions, DiffOptions, Oid, Repository};
 
@@ -51,37 +52,37 @@ pub struct Analyzed {
 
 impl GitRepository<Uninitialized> {
     /// Creates a new git repository with the specified path. `path` must be a valid directory.
-    pub fn try_new(path: PathBuf) -> Result<Self, Box<dyn Error>> {
+    pub fn try_new(path: PathBuf) -> Result<Self> {
         let path = Utf8PathBuf::from_path_buf(path).unwrap();
         if path.is_file() {
-            return Err("Specified path is not a directory".into());
+            return Err(anyhow!("Specified path is not a directory"));
         }
 
         let name = match path.file_name() {
             Some(name) => name.to_string(),
             None => {
-                return Err("Specified path is invalid".into());
+                return Err(anyhow!("Specified path is invalid"));
             }
         };
 
         let path = match path.canonicalize() {
             Ok(p) => p,
             Err(_) => {
-                return Err("Specified path does not exist".into());
+                return Err(anyhow!("Specified path does not exist"));
             }
         };
 
         Ok(Self { state: Uninitialized { path, name } })
     }
 
-    pub fn open(self) -> Result<GitRepository<Opened>, Box<dyn Error>> {
+    pub fn open(self) -> Result<GitRepository<Opened>> {
         self.try_into()
     }
 }
 
 /// Tries to open the git repository. If successful, returns a `GitRepository<Opened>`.
 impl TryFrom<GitRepository<Uninitialized>> for GitRepository<Opened> {
-    type Error = Box<dyn Error>;
+    type Error = anyhow::Error;
 
     fn try_from(r: GitRepository<Uninitialized>) -> Result<Self, Self::Error> {
         let repo = Repository::open(&r.path)?;
@@ -99,7 +100,7 @@ impl GitRepository<Opened> {
     pub fn analyze(
         &self,
         author_map: Option<HashMap<String, String>>,
-    ) -> Result<GitRepository<Analyzed>, Box<dyn Error>> {
+    ) -> Result<GitRepository<Analyzed>> {
         let mut revwalk = self.repo.revwalk()?;
         revwalk.set_sorting(git2::Sort::TIME)?;
         revwalk.push(self.head)?;

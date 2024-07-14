@@ -1,5 +1,6 @@
-use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
+use std::{collections::HashMap, ops::Deref, path::PathBuf};
 
+use anyhow::Result;
 use camino::Utf8PathBuf;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -32,31 +33,31 @@ impl<S> Deref for GitRepositoryAnalyzer<S> {
 #[clap(about, version)]
 pub struct Uninitialized {
     /// Path to the root directory to scan
-    #[clap()]
+    #[arg()]
     pub root: Utf8PathBuf,
 
     /// Recursively scan the root directory
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub recursive: bool,
 
     /// Max depth of the recursive scan
-    #[clap(short, long, default_value = "1")]
+    #[arg(short, long, default_value = "1")]
     pub max_depth: usize,
 
     /// Path to the database
-    #[clap(short, long, default_value = "repositories.db")]
+    #[arg(short, long, default_value = "repositories.db")]
     pub database: Utf8PathBuf,
 
     /// Path to TOML configuration file
-    #[clap(short = 'f', long, default_value = "config.toml")]
+    #[arg(short = 'f', long, default_value = "config.toml")]
     pub config: Utf8PathBuf,
 
     /// Delete all records from the database before scanning
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub clear: bool,
 
     /// Number of worker threads
-    #[clap(short, long, default_value = "8")]
+    #[arg(short, long, default_value = "8")]
     pub num_threads: usize,
 }
 
@@ -68,7 +69,7 @@ pub struct Prepared {
     pub pool: Pool<SqliteConnectionManager>,
 
     /// List of directories to scan
-    pub dirs: Vec<PathBuf>,
+    pub directories: Vec<PathBuf>,
 
     /// List of ignored repositories
     pub ignored_repositories: Vec<String>,
@@ -82,8 +83,8 @@ impl GitRepositoryAnalyzer<Uninitialized> {
         GitRepositoryAnalyzer { state: Uninitialized::parse() }
     }
 
-    pub fn try_prepare(self) -> Result<GitRepositoryAnalyzer<Prepared>, Box<dyn Error>> {
-        let (dirs, ignored_repositories, author_map) = self.get_directories_to_scan();
+    pub fn try_prepare(self) -> Result<GitRepositoryAnalyzer<Prepared>> {
+        let (directories, ignored_repositories, author_map) = self.get_directories_to_scan();
         let pool = Pool::new(SqliteConnectionManager::file(&self.database))?;
         self.prepare_database(&pool)?;
 
@@ -91,7 +92,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
             state: Prepared {
                 num_threads: self.num_threads,
                 pool,
-                dirs,
+                directories,
                 ignored_repositories,
                 author_map,
             },
@@ -101,11 +102,10 @@ impl GitRepositoryAnalyzer<Uninitialized> {
     fn get_directories_to_scan(
         &self,
     ) -> (Vec<PathBuf>, Vec<String>, Option<HashMap<String, String>>) {
-        let mut ignored = Vec::new();
+        let mut ignored_repositories = Vec::new();
         let config = &self.get_config();
-        // let author_map = config.author_map.clone().unwrap_or_default();
 
-        let dirs = if self.recursive {
+        let directories = if self.recursive {
             WalkDir::new(&self.root)
                 .max_depth(self.max_depth)
                 .into_iter()
@@ -117,9 +117,9 @@ impl GitRepositoryAnalyzer<Uninitialized> {
                     if name == ".git" {
                         return false;
                     }
-                    if let Some(ignored_repositories) = &config.ignored_repositories {
-                        if ignored_repositories.contains(&name) {
-                            ignored.push(name);
+                    if let Some(ir) = &config.ignored_repositories {
+                        if ir.contains(&name) {
+                            ignored_repositories.push(name);
                             return false;
                         }
                     }
@@ -131,7 +131,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
             vec![self.root.clone().into()]
         };
 
-        (dirs, ignored, config.author_map.clone())
+        (directories, ignored_repositories, config.author_map.clone())
     }
 
     fn get_config(&self) -> Config {
@@ -143,10 +143,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
         }
     }
 
-    pub fn prepare_database(
-        &self,
-        pool: &Pool<SqliteConnectionManager>,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn prepare_database(&self, pool: &Pool<SqliteConnectionManager>) -> Result<()> {
         let conn = pool.get()?;
 
         conn.execute(
@@ -201,12 +198,13 @@ impl GitRepositoryAnalyzer<Uninitialized> {
 }
 
 impl GitRepositoryAnalyzer<Prepared> {
-    /// Analyze the git repositories and return the elapsed time in seconds
-    pub fn analyze(&self) -> Result<f64, Box<dyn Error>> {
+    /// Analyze the git repositories and return the elapsed time in seconds, vec of analyzed repos,
+    /// and skipped directories
+    pub fn analyze(&self) -> Result<(f64, Vec<String>, Vec<String>)> {
         let mut tasks = Vec::new();
         let m = MultiProgress::new();
 
-        let overall_progress = m.add(ProgressBar::new(self.dirs.len() as u64));
+        let overall_progress = m.add(ProgressBar::new(self.directories.len() as u64));
         overall_progress.set_style(
             ProgressStyle::with_template(
                 "{prefix:<30!.blue} [{bar:40.cyan/blue}] {pos:>3}/{len:3} [{elapsed_precise}]",
@@ -221,7 +219,7 @@ impl GitRepositoryAnalyzer<Prepared> {
             .build()
             .unwrap()
             .block_on(async {
-                for path in &self.dirs {
+                for path in &self.directories {
                     tasks.push(tokio::spawn(Self::exec(
                         path.clone(),
                         self.author_map.clone(),
@@ -237,26 +235,34 @@ impl GitRepositoryAnalyzer<Prepared> {
             });
 
         overall_progress.finish_and_clear();
-        Ok(overall_progress.elapsed().as_millis() as f64 / 1000.0)
+        let (analyzed_repositories, skipped_directories) = self.get_repositories()?;
+        Ok((
+            overall_progress.elapsed().as_millis() as f64 / 1000.0,
+            analyzed_repositories,
+            skipped_directories,
+        ))
     }
 
-    /// Get the list of repositories stored in the database and the list of directories that are not
-    pub fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+    /// Get the list of analyzed repositories and the list of directories ignored
+    fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>)> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
-        let stored = stmt
+        let analyzed_repositories = stmt
             .query_map(params![], |row| row.get::<_, String>(0))?
             .filter_map(|name| name.ok())
             .collect::<Vec<_>>();
 
-        let not_stored = self
-            .dirs
+        let skipped_directories = self
+            .directories
             .iter()
-            .filter(|e| !stored.contains(&e.file_name().unwrap().to_string_lossy().to_string()))
+            .filter(|e| {
+                !analyzed_repositories
+                    .contains(&e.file_name().unwrap().to_string_lossy().to_string())
+            })
             .map(|e| e.display().to_string())
             .collect::<Vec<_>>();
 
-        Ok((stored, not_stored))
+        Ok((analyzed_repositories, skipped_directories))
     }
 
     async fn exec(
