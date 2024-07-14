@@ -33,31 +33,31 @@ impl<S> Deref for GitRepositoryAnalyzer<S> {
 #[clap(about, version)]
 pub struct Uninitialized {
     /// Path to the root directory to scan
-    #[clap()]
+    #[arg()]
     pub root: Utf8PathBuf,
 
     /// Recursively scan the root directory
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub recursive: bool,
 
     /// Max depth of the recursive scan
-    #[clap(short, long, default_value = "1")]
+    #[arg(short, long, default_value = "1")]
     pub max_depth: usize,
 
     /// Path to the database
-    #[clap(short, long, default_value = "repositories.db")]
+    #[arg(short, long, default_value = "repositories.db")]
     pub database: Utf8PathBuf,
 
     /// Path to TOML configuration file
-    #[clap(short = 'f', long, default_value = "config.toml")]
+    #[arg(short = 'f', long, default_value = "config.toml")]
     pub config: Utf8PathBuf,
 
     /// Delete all records from the database before scanning
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub clear: bool,
 
     /// Number of worker threads
-    #[clap(short, long, default_value = "8")]
+    #[arg(short, long, default_value = "8")]
     pub num_threads: usize,
 }
 
