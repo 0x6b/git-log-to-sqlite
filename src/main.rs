@@ -1,13 +1,12 @@
-use std::error::Error;
+use anyhow::Result;
 
 use crate::analyzer::GitRepositoryAnalyzer;
-
 mod analyzer;
 mod config;
 mod log;
 mod repository;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let analyzer = GitRepositoryAnalyzer::new().try_prepare()?;
     let duration = analyzer.analyze()?;
     println!("# Done in {duration} seconds\n");

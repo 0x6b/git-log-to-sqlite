@@ -40,3 +40,4 @@ tokio = { version = "1.35.1", features = ["full"] }
 
 # to traverse directory
 walkdir = "2.4.0"
+anyhow = "1.0.86"

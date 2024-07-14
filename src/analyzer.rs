@@ -1,5 +1,6 @@
-use std::{collections::HashMap, error::Error, ops::Deref, path::PathBuf};
+use std::{collections::HashMap, ops::Deref, path::PathBuf};
 
+use anyhow::Result;
 use camino::Utf8PathBuf;
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -82,7 +83,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
         GitRepositoryAnalyzer { state: Uninitialized::parse() }
     }
 
-    pub fn try_prepare(self) -> Result<GitRepositoryAnalyzer<Prepared>, Box<dyn Error>> {
+    pub fn try_prepare(self) -> Result<GitRepositoryAnalyzer<Prepared>> {
         let (dirs, ignored_repositories, author_map) = self.get_directories_to_scan();
         let pool = Pool::new(SqliteConnectionManager::file(&self.database))?;
         self.prepare_database(&pool)?;
@@ -143,10 +144,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
         }
     }
 
-    pub fn prepare_database(
-        &self,
-        pool: &Pool<SqliteConnectionManager>,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn prepare_database(&self, pool: &Pool<SqliteConnectionManager>) -> Result<()> {
         let conn = pool.get()?;
 
         conn.execute(
@@ -202,7 +200,7 @@ impl GitRepositoryAnalyzer<Uninitialized> {
 
 impl GitRepositoryAnalyzer<Prepared> {
     /// Analyze the git repositories and return the elapsed time in seconds
-    pub fn analyze(&self) -> Result<f64, Box<dyn Error>> {
+    pub fn analyze(&self) -> Result<f64> {
         let mut tasks = Vec::new();
         let m = MultiProgress::new();
 
@@ -241,7 +239,7 @@ impl GitRepositoryAnalyzer<Prepared> {
     }
 
     /// Get the list of repositories stored in the database and the list of directories that are not
-    pub fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+    pub fn get_repositories(&self) -> Result<(Vec<String>, Vec<String>)> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare("SELECT name FROM repositories ORDER BY name")?;
         let stored = stmt
