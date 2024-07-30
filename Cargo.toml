@@ -1,6 +1,6 @@
 [package]
 name = "git-log-to-sqlite"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["kaoru <k@warpnine.io>"]
 description = "A tool to convert git repository logs (without merge commit) to sqlite database"
