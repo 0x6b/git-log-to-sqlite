@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 /// Configuration file structure
 #[derive(Debug, Default, Deserialize)]

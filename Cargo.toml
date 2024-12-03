@@ -1,6 +1,6 @@
 [package]
 name = "git-log-to-sqlite"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["kaoru <k@warpnine.io>"]
 description = "A tool to convert git repository logs (without merge commit) to sqlite database"
@@ -16,34 +16,33 @@ path = "src/lib.rs"
 
 [dependencies]
 # Error management
-anyhow = "1.0.86"
+anyhow = "1.0.93"
 
 # for easier path handling
-camino = { version = "1.1.7", features = ["serde"] }
+camino = { version = "1.1.9", features = ["serde"] }
 
 # for parsing command line arguments
-clap = { version = "4.5.9", features = ["derive"] }
+clap = { version = "4.5.21", features = ["derive"] }
 
 # for working with git repository
 git2 = "0.19.0"
 
 # for indicating progress
-indicatif = "0.17.8"
+indicatif = "0.17.9"
 
 # connection pool
 r2d2 = "0.8.10"
-r2d2_sqlite = "0.24.0"
+r2d2_sqlite = "0.25.0"
 
 # for working with sqlite database
-rusqlite = "0.31.0"
+rusqlite = "0.32.1"
 
 # for deserializing config file
-serde = "1.0.204"
-serde_derive = "1.0.204"
-toml = "0.8.14"
+serde = "1.0.215"
+toml = "0.8.19"
 
 # async runtime
-tokio = { version = "1.38.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
 
 # to traverse directory
 walkdir = "2.5.0"
